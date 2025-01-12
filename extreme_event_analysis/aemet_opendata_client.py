@@ -39,17 +39,9 @@ __REQUEST_ENDPOINTS = {
 # Extensión de archivo para los datos
 __DATA_EXTENSION = ".tsv"
 
-__RENAMING = str.maketrans(
-    {
-        " ": "_",  # Reemplazar espacios con guiones bajos
-        "(": "",  # Eliminar paréntesis de apertura
-        ")": "",  # Eliminar paréntesis de cierre
-    }
-)
-
 # Directorios utilizados para almacenar diversos tipos de datos
 __DIRS = {
-    "root": os.path.dirname(os.path.abspath(__file__)),
+    "root": "./",
     "data": "./data/",
     "warnings": "./data/warnings/{event}/",
     "observations": "./data/observations/{event}/",
@@ -80,9 +72,8 @@ __NAMESPACES = {"cap": "urn:oasis:names:tc:emergency:cap:1.2"}
 __OBSERVATION_PARAMETERS = ["PR", "VI", "BT", "TA", "NE"]
 # Mapeo de los niveles de aviso
 __WARNINGS_MAPPING = {"amarillo": 1, "naranja": 2, "rojo": 3}
-# Número máximo de estaciones por solicitud
-__MAX_STATIONS_PER_REQUEST = 5
 
+# Columnas de las estaciones meteorológicas
 __COLUMNS_STATIONS = {
     "indicativo": "idema",
     "nombre": "name",
@@ -114,6 +105,7 @@ __COLUMNS_WARNINGS = [
     "polygon",
 ]
 
+# Columnas de los umbrales de los parámetros meteorológicos
 __COLUMNS_THRESHOLDS = [
     "geocode",
     "region",
@@ -153,75 +145,91 @@ __COLUMNS_CAP = [
     "polygon",
 ]
 
-__COLUMNS_EVENTS = {"season", "category", "name", "start", "end"}
+# Columnas de los episodios meteorológicos
+__COLUMNS_EVENTS = {"id", "season", "category", "name", "start", "end"}
+
+
+def set_root(root: str) -> None:
+    __DIRS["root"] = root
+
 
 def columns_on_stations() -> list:
     return list(__COLUMNS_STATIONS.values())
 
+
 def columns_on_observations() -> list:
     return list(__COLUMNS_OBSERVATIONS.values())
+
 
 def columns_on_warnings() -> list:
     return __COLUMNS_WARNINGS
 
+
 def columns_on_thresholds() -> list:
     return __COLUMNS_THRESHOLDS
+
 
 def ensure_directories_exist(event: str) -> None:
     """Aseguramos que existe cada directorio especificado"""
     for d in __DIRS.values():
-        p = d.format(event=event.lower().translate(__RENAMING))
-        logging.debug(f"Comprobando existencia de {p}.")
-        if not os.path.exists(p):
+        logging.info(f"Comprobando existencia de {d.format(event=event)}.")
+        if not os.path.exists(d.format(event=event)):
             try:
-                logging.debug(f"... no se ha encontrado. Creando {p}.")
-                os.makedirs(p)
+                logging.info(
+                    f"... no se ha encontrado. Creando {d.format(event=event)}."
+                )
+                os.makedirs(d.format(event=event))
             except OSError as e:
                 logging.error(
-                    f"Ha ocurrido un error al comprobar el directorio {p}: {e}"
+                    f"Ha ocurrido un error al comprobar el directorio {d.format(event=event)}: {e}"
                 )
                 raise
         else:
-            logging.debug(f"... ¡encontrado!")
+            logging.info(f"... ¡encontrado!")
+
 
 def get_file(file: str, event: str = "") -> str:
     """Devuelve la ruta completa del archivo de datos especificado"""
     try:
-        return __FILES[file].format(event=event.lower().translate(__RENAMING))
+        return __FILES[file].format(event=event)
     except Exception as e:
         logging.error(f"Ha ocurrido un error al obtener el archivo de datos: {e}")
         raise
+
 
 def get_dir(dir: str, event: str = "") -> str:
     """Devuelve la ruta completa del directorio especificado"""
     try:
         return os.path.join(
             __DIRS["root"],
-            __DIRS[dir].format(event=event.lower().translate(__RENAMING)),
+            __DIRS[dir].format(event=event),
         )
     except Exception as e:
         logging.error(f"Ha ocurrido un error al obtener la ruta del directorio: {e}")
         raise
 
+
 def exists_stations() -> bool:
     if not os.path.exists(get_file("stations")):
-        logging.debug(f"... inventario de estaciones no encontrado.")
+        logging.info(f"... inventario de estaciones no encontrado.")
         return False
-    logging.debug(f"... inventario de estaciones disponible.")
+    logging.info(f"... inventario de estaciones disponible.")
     return True
+
 
 def exists_warnings(event: str) -> bool:
     if os.path.exists(get_file("warnings", event)):
-        logging.debug(f"... fichero de avisos encontrado.")
+        logging.info(f"... fichero de avisos encontrado.")
         return True
     else:
-        logging.debug(f"... fichero de avisos no encontrados.")
+        logging.info(f"... fichero de avisos no encontrados.")
         return False
+
 
 def __exists_caps(event: str) -> bool:
     if os.path.exists(event):
         try:
-            logging.debug(f"... directorio de avisos disponible.")
+            logging.info(f"... directorio de avisos disponible.")
             by_date_dir = [
                 d
                 for d in os.listdir(get_dir("warnings", event))
@@ -256,19 +264,22 @@ def __exists_caps(event: str) -> bool:
             raise
         return True
     else:
-        logging.debug(f"... ficheros cap no disponibles.")
+        logging.info(f"... ficheros cap no disponibles.")
         return False
+
 
 def exists_observations(event: str) -> bool:
     if not os.path.exists(get_file("observations", event)):
-        logging.debug(f"... observaciones no encontradas.")
+        logging.info(f"... observaciones no encontradas.")
         return False
-    logging.debug(f"... observaciones disponibles.")
+    logging.info(f"... observaciones disponibles.")
     return True
+
 
 def __build_request_url(endpoint: str) -> str:
     """Construye una URL para realizar una solicitud a la API de AEMET"""
     return f"{__REQUEST_SERVER}{__REQUEST_ENDPOINTS[endpoint]}?api_key={__API_KEY}"
+
 
 @tenacity.retry(
     wait=tenacity.wait_fixed(5),  # Espera 5 segundos entre reintentos
@@ -295,18 +306,18 @@ def __request_stations() -> pd.DataFrame:
         logging.error(f"Error. {e}.")
         raise
 
+
 def __convert_dms_to_degrees(dms_coordinate: str, hemisphere: str) -> float:
     dms_value = dms_coordinate.replace(hemisphere, "")
     degrees, minutes, seconds = map(int, [dms_value[:2], dms_value[2:4], dms_value[4:]])
     result = degrees + minutes / 60 + seconds / 3600
     return -result if hemisphere in {"S", "W"} else result
 
+
 def __transform_stations(stations_df: pd.DataFrame) -> pd.DataFrame:
     df = stations_df.copy()
     df.rename(columns=columns_on_stations(), inplace=True)
-    df[["province", "name"]] = df[["province", "name"]].applymap(
-        str.title
-    )
+    df[["province", "name"]] = df[["province", "name"]].applymap(str.title)
     df["latitude"] = df["latitude"].apply(
         lambda x: __convert_dms_to_degrees(x, hemisphere=x[-1])
     )
@@ -316,6 +327,7 @@ def __transform_stations(stations_df: pd.DataFrame) -> pd.DataFrame:
     df = df[columns_on_stations]
     return df
 
+
 def fetch_stations():
     logging.info(f"Comprobando inventario de estaciones.")
     if not exists_stations():
@@ -324,7 +336,7 @@ def fetch_stations():
         logging.info("... preparando datos del inventario de estaciones.")
         stations_df = __transform_stations(stations_df)
         try:
-            logging.debug(f"... almacenando datos en {get_file('stations')}.")
+            logging.info(f"... almacenando datos en {get_file('stations')}.")
             stations_df.to_csv(
                 get_file("stations"),
                 index=False,
@@ -333,6 +345,7 @@ def fetch_stations():
         except Exception as e:
             logging.error(f"Error al guardar los datos: {e}")
             raise
+
 
 @tenacity.retry(
     wait=tenacity.wait_fixed(5),  # Espera 5 segundos entre reintentos
@@ -385,6 +398,7 @@ def __request_warnings(event: str, date: datetime):
         logging.error(f"Error. {e}.")
         raise
 
+
 def fetch_warnings(event: str, start: datetime, end: datetime):
     logging.info(f"Comprobando existencia de avisos para evento {event}.")
     if not exists_warnings(event):
@@ -424,7 +438,7 @@ def fetch_warnings(event: str, start: datetime, end: datetime):
                     )
 
                 try:
-                    logging.debug(
+                    logging.info(
                         f"... descargando avisos para el día {(start + timedelta(n)):%Y-%m-%d}."
                     )
                     __request_warnings(event, (start + timedelta(n)))
@@ -433,7 +447,7 @@ def fetch_warnings(event: str, start: datetime, end: datetime):
                     raise
 
                 try:
-                    logging.debug(f"... descomprimiendo avisos.")
+                    logging.info(f"... descomprimiendo avisos.")
                     __extract_warnings(event, (start + timedelta(n)))
                 except Exception as e:
                     logging.error(f"Error al descomprimir avisos: {e}")
@@ -463,7 +477,7 @@ def fetch_warnings(event: str, start: datetime, end: datetime):
         warnings_df = warnings_df[columns_on_warnings()]
 
         try:
-            logging.debug(f"... almacenando datos en {get_file('warnings', event)}.")
+            logging.info(f"... almacenando datos en {get_file('warnings', event)}.")
             warnings_df.to_csv(
                 get_file("warnings", event),
                 index=False,
@@ -472,6 +486,7 @@ def fetch_warnings(event: str, start: datetime, end: datetime):
         except Exception as e:
             logging.error(f"Error al guardar los datos: {e}")
             raise
+
 
 def __extract_warnings(event: str, date: datetime):
     extraction_path = os.path.join(get_dir("warnings", event), date.strftime("%Y%m%d"))
@@ -483,14 +498,14 @@ def __extract_warnings(event: str, date: datetime):
         with tarfile.open(tar_path, "r") as t:
             members = t.getmembers()
             members_str = ", ".join(m.name for m in members)
-            logging.debug(f"... abriendo tar: {members_str}.")
+            logging.info(f"... abriendo tar: {members_str}.")
             for member in members:
-                logging.debug(f"... extrayendo {member.name} a {extraction_path}.")
+                logging.info(f"... extrayendo {member.name} a {extraction_path}.")
                 t.extract(member, path=extraction_path)
-            logging.debug(f"... cerrando tar.")
+            logging.info(f"... cerrando tar.")
             t.close()
             try:
-                logging.debug(f"... eliminando tar.")
+                logging.info(f"... eliminando tar.")
                 os.remove(tar_path)
             except Exception as e:
                 logging.error(f"Error al eliminar tar: {e}")
@@ -506,6 +521,7 @@ def __extract_warnings(event: str, date: datetime):
         logging.error(f"Error durante la descompresión de avisos: {e}")
         raise
 
+
 def __extract_gzips(path: str):
     logging.info(f"Descomprimiendo gzips de previsiones en {path}.")
     try:
@@ -520,7 +536,7 @@ def __extract_gzips(path: str):
                 gz_out.write(gz_in.read())
             gz_in.close()
             gz_out.close()
-            logging.debug(f"... eliminando {gz}.")
+            logging.info(f"... eliminando {gz}.")
             try:
                 os.remove(os.path.join(path, gz))
             except Exception as e:
@@ -532,6 +548,7 @@ def __extract_gzips(path: str):
         logging.error(f"Error durante la descompresión de gzip: {e}")
         raise
 
+
 def __extract_caps(path: str) -> bool:
     logging.info(f"Descomprimiendo tars con ficheros cap en {path}.")
     try:
@@ -542,13 +559,13 @@ def __extract_caps(path: str) -> bool:
             with tarfile.open(os.path.join(path, tar), "r") as t:
                 members = t.getmembers()
                 members_str = ", ".join(m.name for m in members)
-                logging.debug(f"... abriendo {tar}: {members_str}.")
+                logging.info(f"... abriendo {tar}: {members_str}.")
                 for member in members:
-                    logging.debug(f"... extrayendo {member.name} a {path}.")
+                    logging.info(f"... extrayendo {member.name} a {path}.")
                     t.extract(member, path=path)
-                logging.debug(f"... cerrando {tar}.")
+                logging.info(f"... cerrando {tar}.")
                 t.close()
-                logging.debug(f"... eliminando {tar}.")
+                logging.info(f"... eliminando {tar}.")
                 try:
                     os.remove(os.path.join(path, tar))
                 except Exception as e:
@@ -558,6 +575,7 @@ def __extract_caps(path: str) -> bool:
     except Exception as e:
         logging.error(f"Error durante la descompresión de ficheros cap: {e}")
         raise
+
 
 def __merge_warnings_data(path: str) -> pd.DataFrame:
     logging.info(f"Unificando archivos cap en {path}.")
@@ -570,7 +588,7 @@ def __merge_warnings_data(path: str) -> pd.DataFrame:
         ]
         for cap in cap_file_list:
             try:
-                logging.debug(
+                logging.info(
                     f"... leyendo archivo {os.path.join(path, event_day, cap)}."
                 )
                 tree = ET.parse(os.path.join(path, event_day, cap))
@@ -639,31 +657,30 @@ def __merge_warnings_data(path: str) -> pd.DataFrame:
                 raise
 
             try:
-                logging.debug(f"... eliminando {os.path.join(path, event_day, cap)}.")
+                logging.info(f"... eliminando {os.path.join(path, event_day, cap)}.")
                 os.remove(os.path.join(path, event_day, cap))
             except Exception as e:
                 logging.error(
                     f"Error al eliminar {os.path.join(path, event_day, cap)}: {e}"
                 )
 
-    try:
-        logging.debug(f"... eliminando directorio {os.path.join(path, event_day)}.")
-        shutil.rmtree(os.path.join(path, event_day))
-    except Exception as e:
-        logging.error(
-            f"Error al eliminar directorio {os.path.join(path, event_day)}: {e}"
-        )
-        raise
-    
+        try:
+            logging.info(f"... eliminando directorio {os.path.join(path, event_day)}.")
+            shutil.rmtree(os.path.join(path, event_day))
+        except Exception as e:
+            logging.error(
+                f"Error al eliminar directorio {os.path.join(path, event_day)}: {e}"
+            )
+            raise
+
     return warnings_df
+
 
 def __transform_warnings_data(warnings_df: pd.DataFrame) -> pd.DataFrame:
     df = warnings_df.copy()
     df = df[df["param_id"].isin(__OBSERVATION_PARAMETERS)]
     df["priority"] = df["severity"].map(__WARNINGS_MAPPING)
     df.dropna(subset=["priority"], inplace=True)
-
-    print(df.head(1))
 
     df["sent"] = pd.to_datetime(
         df["sent"], format="%Y-%m-%dT%H:%M:%S%z", errors="coerce", utc=True
@@ -700,6 +717,7 @@ def __transform_warnings_data(warnings_df: pd.DataFrame) -> pd.DataFrame:
 
     return pd.DataFrame(processed_rows)
 
+
 def __clean_warnings_data(warnings_df: pd.DataFrame) -> pd.DataFrame:
     df = warnings_df.copy()
     df.sort_values(
@@ -710,17 +728,20 @@ def __clean_warnings_data(warnings_df: pd.DataFrame) -> pd.DataFrame:
             "severity",
             "sent",
         ],
-        ascending=[True, True, True, False, False], inplace=True,
-    ).reset_index(drop=True, inplace=True)
+        ascending=[True, True, True, False, False],
+        inplace=True,
+    )
 
-    df.groupby(
-        ["geocode", "param_id", "effective"], as_index=False, inplace=True
-    ).apply(
+    df.reset_index(drop=True, inplace=True)
+
+    df = df.groupby(["geocode", "param_id", "effective"], as_index=False).apply(
         lambda x: x.sort_values(by=["severity", "sent"], ascending=[False, False]).head(
             1
         )
     )
+
     return df
+
 
 @tenacity.retry(
     wait=tenacity.wait_fixed(5),  # Espera 5 segundos entre reintentos
@@ -764,6 +785,7 @@ def __request_observations(date: datetime) -> pd.DataFrame:
         logging.error(f"Error. {e}.")
         raise
 
+
 def fetch_observations(
     event: str, start: datetime, end: datetime, stations=[str]
 ) -> None:
@@ -771,11 +793,13 @@ def fetch_observations(
     if not exists_observations(event):
         observations_df = pd.DataFrame(columns=list(__COLUMNS_OBSERVATIONS.keys()))
         for n in range((end - start).days):
-            logging.debug(
+            logging.info(
                 f"... obteniendo observaciones para el dia {(start + timedelta(n)):%Y-%m-%d}."
             )
             response_df = __request_observations(start + timedelta(n))
-            observations_df = pd.concat([observations_df, response_df], ignore_index=True)
+            observations_df = pd.concat(
+                [observations_df, response_df], ignore_index=True
+            )
 
         observations_df.rename(columns=__COLUMNS_OBSERVATIONS, inplace=True)
         observations_df = observations_df[columns_on_observations()]
@@ -809,10 +833,14 @@ def fetch_observations(
             logging.error(f"Error al guardar los datos: {e}")
             raise
 
-def __filter_observations_data(observations_df: pd.DataFrame, stations=[]) -> pd.DataFrame:
+
+def __filter_observations_data(
+    observations_df: pd.DataFrame, stations=[]
+) -> pd.DataFrame:
     df = observations_df.copy()
     df = df[df["idema"].isin(stations)]
     return df
+
 
 def __transform_observations_data(observations_df: pd.DataFrame) -> pd.DataFrame:
     df = observations_df.copy()
@@ -831,6 +859,7 @@ def __transform_observations_data(observations_df: pd.DataFrame) -> pd.DataFrame
     )
     df.dropna(inplace=True)
     return df
+
 
 def __clean_observations_data(observations_df: pd.DataFrame) -> pd.DataFrame:
     df = observations_df.copy()

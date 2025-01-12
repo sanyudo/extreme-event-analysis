@@ -7,6 +7,7 @@ import logging
 
 class EventAnalysis:
 
+    __EVENT_ID = ""
     __EVENT_NAME = ""
     __EVENT_START = datetime.datetime.now()
     __EVENT_END = datetime.datetime.now()
@@ -16,28 +17,32 @@ class EventAnalysis:
     __WARNINGS = pd.DataFrame()    
     __THRESHOLDS = pd.DataFrame()    
 
-    def __init__(self, event_name: str, event_start: datetime, event_end: datetime):
+    def __init__(self, event_id: str, event_name: str, event_start: datetime, event_end: datetime):
+        self.__EVENT_ID = event_id
         self.__EVENT_NAME = event_name
         self.__EVENT_START = event_start
         self.__EVENT_END = event_end
-        aemet.ensure_directories_exist(self.__EVENT_NAME)
+        aemet.ensure_directories_exist(self.__EVENT_ID)
 
         aemet.fetch_stations()
         self.__STATIONS = self.prepare_stations(pd.read_csv(aemet.get_file('stations'), sep="\t"))
 
-        aemet.fetch_warnings(self.__EVENT_NAME, self.__EVENT_START, self.__EVENT_END)
-        self.__WARNINGS = self.prepare_warnings(pd.read_csv(aemet.get_file('warnings', self.__EVENT_NAME), sep="\t"))
+        aemet.fetch_warnings(self.__EVENT_ID, self.__EVENT_START, self.__EVENT_END)
+        self.__WARNINGS = self.prepare_warnings(pd.read_csv(aemet.get_file('warnings', self.__EVENT_ID), sep="\t"))
 
         self.__THRESHOLDS = self.prepare_thresholds(pd.read_csv(aemet.get_file('thresholds'), sep="\t"))
 
         self.__filter_data()
         stations = self.__STATIONS["idema"].tolist()
 
-        aemet.fetch_observations(self.__EVENT_NAME, self.__EVENT_START, self.__EVENT_END, stations)
-        self.__OBSERVATIONS = self.prepare_observations(pd.read_csv(aemet.get_file('observations', self.__EVENT_NAME), sep="\t"))
+        aemet.fetch_observations(self.__EVENT_ID, self.__EVENT_START, self.__EVENT_END, stations)
+        self.__OBSERVATIONS = self.prepare_observations(pd.read_csv(aemet.get_file('observations', self.__EVENT_ID), sep="\t"))
 
     def get_name(self) -> str:
         return self.__EVENT_NAME
+    
+    def get_id(self) -> str:
+        return self.__EVENT_ID
 
     def prepare_thresholds(self, df: pd.DataFrame) -> pd.DataFrame:
         logging.info("Preprocesando datos de umbrales...")
@@ -100,8 +105,8 @@ class EventAnalysis:
                         filtered_stations = pd.concat(filtered_stations, station_item)
                 revised_areas.add(Polygon(area))
 
-        logging.debug(f"... regiones con aviso: {len(revised_areas)}.")
-        logging.debug(f"... estaciones en regiones con aviso: {len(filtered_stations)}.")
+        logging.info(f"... regiones con aviso: {len(revised_areas)}.")
+        logging.info(f"... estaciones en regiones con aviso: {len(filtered_stations)}.")
         
         self.__WARNINGS = pd.merge(self.__WARNINGS, self.__THRESHOLDS, on='geocode', how='inner')
 
