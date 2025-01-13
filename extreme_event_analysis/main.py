@@ -1,10 +1,11 @@
 import logging
 from datetime import datetime
 import pandas as pd
-import aemet_opendata_client as aemet
-from extreme_event_analysis import EventAnalysis
+import constants
+import commons
+from event_analysis import EventAnalysis
 
-
+# Configure logging
 logging.basicConfig(
     filename=f"main_{datetime.now().strftime('%Y%m%d%H%M')}.log",
     level=logging.INFO,
@@ -13,16 +14,23 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-aemet.set_root("P:\\TFM\\")
+# Set the root directory for constants
+constants.set_root("P:\\TFM\\")
 
-df = pd.read_csv(aemet.get_file("events"), sep = "\t")
-df["start"] = pd.to_datetime(df["start"], format="%d/%m/%Y")
-df["end"] = pd.to_datetime(df["end"], format="%d/%m/%Y")
-df.sort_values(by=["start", "end"], inplace=True)
+# Retrieve data events
+events = commons.retrieve_data_events()
 
-for i, event in df.iterrows():
-    print(f"Iniciando análisis: {event['name']} ({event['start']} - {event['end']}). ID = {event['id']}")
+# Iterate over each event and perform analysis
+for i, event in events.iterrows():
+    logging.info(f"Starting analysis: {event['name']} ({event['start']} - {event['end']}). ID = {event['id']}")
     analysis = EventAnalysis(event["id"], event["name"], event["start"], event["end"])
-    print("................")
+    logging.info(f"Fetching data.")
+    analysis.fetch_data()
+    logging.info(f"Loading data.")
+    analysis.load_data()
+    logging.info(f"Writing data.")
+    analysis.write_data()
+    logging.info("Analysis completed")
+
 
 
