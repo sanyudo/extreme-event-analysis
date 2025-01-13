@@ -14,10 +14,12 @@ class EventAnalysis:
 
     __STATIONS = pd.DataFrame()
     __OBSERVATIONS = pd.DataFrame()
-    __WARNINGS = pd.DataFrame()    
-    __THRESHOLDS = pd.DataFrame()    
+    __WARNINGS = pd.DataFrame()
+    __THRESHOLDS = pd.DataFrame()
 
-    def __init__(self, event_id: str, event_name: str, event_start: datetime, event_end: datetime):
+    def __init__(
+        self, event_id: str, event_name: str, event_start: datetime, event_end: datetime
+    ):
         self.__EVENT_ID = event_id
         self.__EVENT_NAME = event_name
         self.__EVENT_START = event_start
@@ -25,22 +27,32 @@ class EventAnalysis:
         aemet.ensure_directories_exist(self.__EVENT_ID)
 
         aemet.fetch_stations()
-        self.__STATIONS = self.prepare_stations(pd.read_csv(aemet.get_file('stations'), sep="\t"))
+        self.__STATIONS = self.prepare_stations(
+            pd.read_csv(aemet.get_file("stations"), sep="\t")
+        )
 
         aemet.fetch_warnings(self.__EVENT_ID, self.__EVENT_START, self.__EVENT_END)
-        self.__WARNINGS = self.prepare_warnings(pd.read_csv(aemet.get_file('warnings', self.__EVENT_ID), sep="\t"))
+        self.__WARNINGS = self.prepare_warnings(
+            pd.read_csv(aemet.get_file("warnings", self.__EVENT_ID), sep="\t")
+        )
 
-        self.__THRESHOLDS = self.prepare_thresholds(pd.read_csv(aemet.get_file('thresholds'), sep="\t"))
+        self.__THRESHOLDS = self.prepare_thresholds(
+            pd.read_csv(aemet.get_file("thresholds"), sep="\t")
+        )
 
         self.__filter_data()
         stations = self.__STATIONS["idema"].tolist()
 
-        aemet.fetch_observations(self.__EVENT_ID, self.__EVENT_START, self.__EVENT_END, stations)
-        self.__OBSERVATIONS = self.prepare_observations(pd.read_csv(aemet.get_file('observations', self.__EVENT_ID), sep="\t"))
+        aemet.fetch_observations(
+            self.__EVENT_ID, self.__EVENT_START, self.__EVENT_END, stations
+        )
+        self.__OBSERVATIONS = self.prepare_observations(
+            pd.read_csv(aemet.get_file("observations", self.__EVENT_ID), sep="\t")
+        )
 
     def get_name(self) -> str:
         return self.__EVENT_NAME
-    
+
     def get_id(self) -> str:
         return self.__EVENT_ID
 
@@ -49,7 +61,7 @@ class EventAnalysis:
         try:
             columns = aemet.columns_on_thresholds()
             for column in columns:
-                if column not in ["geocode", "region", "area","province"]:
+                if column not in ["geocode", "region", "area", "province"]:
                     df[column] = pd.to_numeric(df[column], errors="coerce")
             return df
         except Exception as e:
@@ -69,9 +81,7 @@ class EventAnalysis:
         logging.info("Preprocesando datos de avisos...")
         try:
             df["effective"] = pd.to_datetime(df["effective"], format="%Y-%m-%d")
-            df["param_value"] = pd.to_numeric(
-                df["param_value"], errors="coerce"
-            )
+            df["param_value"] = pd.to_numeric(df["param_value"], errors="coerce")
             df["geocode"] = pd.to_numeric(
                 df["geocode"], downcast="integer", errors="coerce"
             )
@@ -83,13 +93,17 @@ class EventAnalysis:
         logging.info("Preprocesando datos de observaciones...")
         try:
             df["date"] = pd.to_datetime(df["date"], format="%Y-%m-%d")
-            df["min_temperature"] = pd.to_numeric(df["min_temperature"], errors="coerce")
-            df["max_temperature"] = pd.to_numeric(df["max_temperature"], errors="coerce")
+            df["min_temperature"] = pd.to_numeric(
+                df["min_temperature"], errors="coerce"
+            )
+            df["max_temperature"] = pd.to_numeric(
+                df["max_temperature"], errors="coerce"
+            )
             df["max_wind_speed"] = pd.to_numeric(df["max_wind_speed"], errors="coerce")
             df["precipitation"] = pd.to_numeric(df["precipitation"], errors="coerce")
             return df
         except Exception as e:
-            logging.error(f"Error preprocesando datos de observaciones: {e}")            
+            logging.error(f"Error preprocesando datos de observaciones: {e}")
 
     def __filter_data(self):
         min_date = pd.Timestamp(self.__EVENT_START)
@@ -98,17 +112,28 @@ class EventAnalysis:
         filtered_stations = pd.DataFrame()
         for i, warning_item in self.__WARNINGS.iterrows():
             area_str = warning_item["polygon"].split()
-            area = [tuple(map(float, a.split(','))) for a in area_str]
+            area = [tuple(map(float, a.split(","))) for a in area_str]
             if Polygon(area) not in revised_areas:
                 for j, station_item in self.__STATIONS.iterrows():
-                    if Polygon(area).contains(Point(station_item["longitude"], station_item["latitude"])) and station_item not in filtered_stations:
+                    if (
+                        Polygon(area).contains(
+                            
+                            Point(station_item["longitude"], station_item["latitude"])
+                        )
+                        and station_item not in filtered_stations
+                    ):
                         filtered_stations = pd.concat(filtered_stations, station_item)
                 revised_areas.add(Polygon(area))
 
         logging.info(f"... regiones con aviso: {len(revised_areas)}.")
         logging.info(f"... estaciones en regiones con aviso: {len(filtered_stations)}.")
-        
-        self.__WARNINGS = pd.merge(self.__WARNINGS, self.__THRESHOLDS, on='geocode', how='inner')
+
+        self.__WARNINGS = pd.merge(
+            self.__WARNINGS, self.__THRESHOLDS, on="geocode", how="inner"
+        )
+
+        self.__STATIONS = filtered_stations
+
 
 """
     def __load_observations(self, df: pd.DataFrame):
@@ -198,4 +223,3 @@ class EventAnalysis:
                 logging.error(f"Error creando umbral desde fila {i}: {e}")
         logging.info(f"... cargados {len(self.__THRESHOLDS)} umbrales.")
 """
-
