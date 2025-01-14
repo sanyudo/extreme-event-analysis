@@ -1,0 +1,47 @@
+# Ignore Python bytecode files
+*.pyc
+*.pyo
+__pycache__/
+
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore
+TFM/
+__dep/
+data/
+results/
+
+# Ignore virtual environment directories
+venv/
+env/
+ENV/
+.venv/
+.ENV/
+
+# Ignore data files
+*.csv
+*.json
+*.xml
+*.h5
+*.hdf5
+
+# Ignore log files
+*.log
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore temporary files
+*.tmp
+*.swp
+*.bak
+*.orig
+*.rej
+
+# Ignore compiled files
+*.o
+*.so
+*.a
+*.out
