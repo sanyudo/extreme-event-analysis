@@ -18,8 +18,8 @@ from requests.exceptions import RequestException  # For handling requests-relate
 import tenacity  # For implementing automatic retries in operations
 
 # Local or custom modules
-import constants  # Global constants for the project
-import commons  # Common functions from the extreme_event_analysis module
+import common_constants  # Global constants for the project
+import common_tasks  # Common functions from the extreme_event_analysis module
 
 # Specific submodules from the standard library
 from datetime import datetime, timedelta  # For working with time differences (days, hours, etc.)
@@ -40,9 +40,10 @@ __OPENDATA_REQUEST_QUERYSTRING = {
 
 # Endpoints for different types of data from AEMET Open Data API
 __OPENDATA_REQUEST_ENDPOINTS = {
-    "stations": "/api/valores/climatologicos/inventarioestaciones/todasestaciones/",
     "warnings": "/api/avisos_cap/archivo/fechaini/{start_date}/fechafin/{end_date}",
     "observations": "/api/valores/climatologicos/diarios/datos/fechaini/{start_date}/fechafin/{end_date}/todasestaciones",
+    #"stations": "/api/valores/climatologicos/inventarioestaciones/todasestaciones/",    
+    #"geocodes": ""
 }
 
 # Constants for file names
@@ -79,49 +80,6 @@ def set_api_key(api_key: str):
     __OPENDATA_API_KEY = api_key
 
 @retry_on_request_exception
-def __opendata_request_stations() -> pd.DataFrame:
-    """
-    Makes a request to the AEMET OpenData API to retrieve station data.
-
-    Returns:
-        pd.DataFrame: A DataFrame containing the station data retrieved from the API.
-
-    Raises:
-        RequestException: If there is an error with the request.
-        ValueError: If there is an error parsing the JSON response.
-    """
-    try:
-        response = requests.get(
-            __build_request_url("stations"), headers=__OPENDATA_REQUEST_HEADERS
-        )
-        response.raise_for_status()
-        logging.info("Station data retrieved successfully.")
-        return pd.DataFrame(response.json()["datos"])
-    except RequestException as e:
-        logging.error(f"Error retrieving data: {e}")
-        raise
-    except ValueError as e:
-        logging.error(f"Error parsing JSON: {e}")
-        raise
-
-def fetch_stations():
-    """
-    Fetches the latest station inventory data from the AEMET Open Data API.
-
-    Raises:
-        Exception: If there is an error while saving the data to a CSV file.
-    """
-    logging.info("Downloading new station inventory data.")
-    stations_df = __opendata_request_stations()
-    path = constants.retrieve_filepath("stations")
-    try:
-        logging.info(f"Saving data to {path}.")
-        stations_df.to_csv(path, index=False, sep="\t")
-    except Exception as e:
-        logging.error(f"Error saving station inventory: {e}")
-        raise
-
-@retry_on_request_exception
 def __request_caps(event: str, date: datetime):
     """
     Requests and downloads warning data from the AEMET OpenData service for a specific event and date.
@@ -153,7 +111,7 @@ def __request_caps(event: str, date: datetime):
 
     try:
         download_file = os.path.join(
-            constants.retrieve_dirpath("warnings", event), date.strftime("%Y%m%d"), __CAPS_TAR_FILENAME
+            common_constants.retrieve_dirpath("warnings", event), date.strftime("%Y%m%d"), __CAPS_TAR_FILENAME
         )
         with requests.get(download_url, stream=True) as response:
             response.raise_for_status()
@@ -202,7 +160,7 @@ def __extract_tars(event: str, date: datetime):
     Raises:
         Exception: If there is an error during the extraction or decompression process.
     """
-    extraction_path = os.path.join(constants.retrieve_dirpath("warnings", event), date.strftime("%Y%m%d"))
+    extraction_path = os.path.join(common_constants.retrieve_dirpath("warnings", event), date.strftime("%Y%m%d"))
     tar_path = os.path.join(extraction_path, __CAPS_TAR_FILENAME)
     
     try:
@@ -332,12 +290,12 @@ def fetch_observations(event: str, start: datetime, end: datetime) -> None:
         dfs.append(__request_observations(start + timedelta(n)))
 
     observations_df = pd.concat(dfs, ignore_index=True)
-    observations_df.rename(columns=constants.mapping_observation_columns(), inplace=True)
-    observations_df = observations_df[constants.columns_data_observations()]
+    observations_df.rename(columns=common_constants.mapping_observations_fields, inplace=True)
+    observations_df = observations_df[common_constants.columns_observations]
     
     try:
         observations_df.to_csv(
-            constants.retrieve_filepath("observations", event),
+            common_constants.retrieve_filepath("observations", event),
             index=False,
             sep="\t",
         )

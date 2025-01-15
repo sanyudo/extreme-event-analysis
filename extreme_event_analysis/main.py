@@ -1,9 +1,9 @@
 import logging
 from datetime import datetime
 import pandas as pd
-import constants
-import commons
-from analysis import EventAnalysis
+import common_constants
+import common_tasks
+from event_analysis import EventAnalysis
 
 # Configure logging
 logging.basicConfig(
@@ -15,21 +15,21 @@ logging.basicConfig(
 )
 
 # Set the root directory for constants
-constants.set_root("P:\\TFM\\")
+common_constants.set_root("P:\\TFM\\")
 
 # Retrieve data events
-events = commons.retrieve_data_events()
+events = common_tasks.retrieve_data_events()
 
 # Iterate over each event and perform analysis
 for i, event in events.iterrows():
     logging.info(f"Starting analysis: {event['name']} ({event['start']} - {event['end']}). ID = {event['id']}")
     analysis = EventAnalysis(event["id"], event["name"], event["start"], event["end"])
     logging.info(f"Fetching data.")
-    analysis.fetch_data()
+    analysis.fetch_warnings()
     logging.info(f"Loading data.")
     analysis.load_data()
     logging.info(f"Obtain observations.")
-    analysis.obtain_observations()     
+    analysis.fetch_observations()     
     logging.info(f"Preparing data.")
     analysis.prepare_analysis()    
     logging.info(f"Writing data.")

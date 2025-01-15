@@ -16,11 +16,14 @@ from datetime import datetime, timedelta  # For working with dates and times
 # Third-party modules
 import pandas as pd  # For data manipulation and analysis
 import numpy as np # For operations
+from shapely import Point, Polygon # Operation with coordinates
+
 
 # Local or custom modules
-import constants  # Global constants for the project
+import common_constants  # Global constants for the project
 
-__SEVERE_PRECIPITATION_BY_TIMEFRAME = {1: 0.33, 12: 0.90}
+__SEVERE_PRECIPITATION_BY_TIMEFRAME = {1: 0.33, 12: 0.85}
+__EXTREME_PRECIPITATION_BY_TIMEFRAME = {1: 0.50, 12: 1.00}
 
 def ensure_directories(event: str, start: datetime, end: datetime) -> bool:
     """
@@ -32,7 +35,7 @@ def ensure_directories(event: str, start: datetime, end: datetime) -> bool:
     Returns:
         bool: True if all directories exist or were successfully created, False otherwise.
     """
-    for d in constants.__DIR_PATHS.values():
+    for d in common_constants.path_to_dir.values():
         path = os.path.join(*[item.format(event=event) if isinstance(item, str) and "{event}" in item else item 
                  for item in d])
         try:
@@ -45,7 +48,7 @@ def ensure_directories(event: str, start: datetime, end: datetime) -> bool:
             logging.error(f"Error ensuring directory {path} exists for event {event}: {e}")
             return False
         
-        path = constants.retrieve_dirpath("warnings", event=event)
+        path = common_constants.retrieve_dirpath("warnings", event=event)
         for n in range((end - start).days + 1):
             n_path = os.path.join(path, (start + timedelta(n)).strftime("%Y%m%d"))
             try:
@@ -69,7 +72,7 @@ def clean_raw(event: str) -> bool:
     Returns:
         bool: True if all directories exist or were successfully cleaned, False otherwise.
     """
-    path = os.path.join(constants.retrieve_dirpath("warnings", event=event))
+    path = os.path.join(common_constants.retrieve_dirpath("warnings", event=event))
     try:
         if os.path.exists(path):
             logging.info(f"Cleaning directory: {path}")
@@ -119,7 +122,7 @@ def exists_files_caps(event: str) -> bool:
     Returns:
         bool: True if there is at least one XML file in the directory structure, False otherwise.
     """
-    path = constants.retrieve_dirpath("warnings", event)
+    path = common_constants.retrieve_dirpath("warnings", event)
     logging.info(f"Checking for CAP XML files in {path}.")
     if os.path.exists(path):
         for dir_name in [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]:
@@ -144,10 +147,10 @@ def __extract_data_caps(event: str) -> pd.DataFrame:
     Returns:
         pd.DataFrame: A DataFrame containing the extracted warning data.
     """
-    path = constants.retrieve_dirpath("warnings", event=event)
+    path = common_constants.retrieve_dirpath("warnings", event=event)
     logging.info(f"Consolidating CAP files in {path}.")
 
-    df = pd.DataFrame(columns=constants.columns_xml_cap())
+    df = pd.DataFrame(columns=common_constants.fields_cap)
     dirs = [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
     logging.debug(f"Directories found: {dirs}")
     for dir in dirs:
@@ -159,9 +162,9 @@ def __extract_data_caps(event: str) -> pd.DataFrame:
                 tree = ET.parse(os.path.join(path, dir, cap))
                 root = tree.getroot()
 
-                cap_identifier = root.find("cap:identifier", constants.namespace_on_capxml()).text
-                cap_sent = root.find(".//cap:sent", constants.namespace_on_capxml()).text
-                info_elements = root.findall(".//cap:info", constants.namespace_on_capxml())
+                cap_identifier = root.find("cap:identifier", common_constants.namespace_cap).text
+                cap_sent = root.find(".//cap:sent", common_constants.namespace_cap).text
+                info_elements = root.findall(".//cap:info", common_constants.namespace_cap)
                 selected_info = None
                 for info in info_elements:
                     language = info.get("lang")
@@ -174,19 +177,19 @@ def __extract_data_caps(event: str) -> pd.DataFrame:
                     selected_info = info_elements[0]
 
                 cap_effective = selected_info.find(
-                    ".//cap:effective", constants.namespace_on_capxml()
+                    ".//cap:effective", common_constants.namespace_cap
                 ).text
-                cap_expires = selected_info.find(".//cap:expires", constants.namespace_on_capxml()).text
+                cap_expires = selected_info.find(".//cap:expires", common_constants.namespace_cap).text
                 cap_event_code = selected_info.find(
-                    ".//cap:eventCode/cap:value", constants.namespace_on_capxml()
+                    ".//cap:eventCode/cap:value", common_constants.namespace_cap
                 ).text
                 if cap_event_code:
                     cap_event_code = cap_event_code.split(";")
 
                 parameters = {}
-                for param in selected_info.findall(".//cap:parameter", constants.namespace_on_capxml()):
-                    param_name = param.find("cap:valueName", constants.namespace_on_capxml()).text
-                    param_value = param.find("cap:value", constants.namespace_on_capxml()).text
+                for param in selected_info.findall(".//cap:parameter", common_constants.namespace_cap):
+                    param_name = param.find("cap:valueName", common_constants.namespace_cap).text
+                    param_value = param.find("cap:value", common_constants.namespace_cap).text
                     parameters[param_name] = param_value
 
                     cap_severity = parameters.get("AEMET-Meteoalerta nivel", None)
@@ -202,25 +205,26 @@ def __extract_data_caps(event: str) -> pd.DataFrame:
                     cap_event_code[0] = "PR_12H"
 
                 cap_polygon = []
-                for area in selected_info.findall(".//cap:area", constants.namespace_on_capxml()):
-                    geocode = area.find("cap:geocode", constants.namespace_on_capxml())
-                    cap_geocode = geocode.find("cap:value", constants.namespace_on_capxml()).text
-                    cap_polygon = area.find("cap:polygon", constants.namespace_on_capxml()).text
+                for area in selected_info.findall(".//cap:area", common_constants.namespace_cap):
+                    geocode = area.find("cap:geocode", common_constants.namespace_cap)
+                    cap_geocode = geocode.find("cap:value", common_constants.namespace_cap).text
+                    cap_polygon = area.find("cap:polygon", common_constants.namespace_cap).text
 
-                if cap_severity in constants.mapping_severity().keys():
-                    df.loc[len(df)] = {
-                        "id": cap_identifier,
-                        "sent": cap_sent,
-                        "effective": cap_effective,
-                        "expires": cap_expires,
-                        "severity": cap_severity,
-                        "param_id": cap_event_code[0] if cap_event_code else None,
-                        "param_name": cap_parameter[1],
-                        "param_value": re.sub(r"[^\d]", "", cap_parameter[2]),
-                        "geocode": cap_geocode,
-                        "polygon": cap_polygon,
-                    }
-                    logging.debug(f"Row added to DataFrame: {df.iloc[-1].to_dict()}")
+                if cap_severity in common_constants.mapping_severity_values.keys():
+                    if common_constants.mapping_severity_values.get(cap_severity) > 0:
+                        df.loc[len(df)] = {
+                            "id": cap_identifier,
+                            "sent": cap_sent,
+                            "effective": cap_effective,
+                            "expires": cap_expires,
+                            "severity": cap_severity,
+                            "param_id": cap_event_code[0] if cap_event_code else None,
+                            "param_name": cap_parameter[1],
+                            "param_value": re.sub(r"[^\d]", "", cap_parameter[2]),
+                            "geocode": cap_geocode,
+                            "polygon": cap_polygon,
+                        }
+                        logging.debug(f"Row added to DataFrame: {df.iloc[-1].to_dict()}")
             except Exception as e:
                 logging.error(f"Error reading {os.path.join(path, dir, cap)}: {e}")
                 raise
@@ -259,9 +263,9 @@ def convert_caps_to_warnings(event: str) -> pd.DataFrame:
 
     logging.info(f"Completed fetching warnings for event: {event}")
     try:
-        logging.info(f"... storing data in {constants.retrieve_filepath('warnings', event)}.")
+        logging.info(f"... storing data in {common_constants.retrieve_filepath('warnings', event)}.")
         warnings.to_csv(
-            constants.retrieve_filepath('warnings', event),
+            common_constants.retrieve_filepath('warnings', event),
             index=False,
             sep="\t",
         )
@@ -280,7 +284,7 @@ def __transform_raw_warnings(warnings: pd.DataFrame) -> pd.DataFrame:
         pd.DataFrame: Transformed DataFrame with expanded rows for each day from 'effective' to 'expires'.
     """
     logging.info("Filtering warnings to include only allowed parameters...")
-    warnings = warnings[warnings["param_id"].isin(constants.parameters_allowed())]
+    warnings = warnings[warnings["param_id"].isin(common_constants.allowed_parameters_ids)]
     
     logging.info("Converting date columns to datetime objects...")
     warnings["sent"] = pd.to_datetime(
@@ -353,7 +357,7 @@ def __clean_raw_warnings(warnings: pd.DataFrame) -> pd.DataFrame:
     )
     
     logging.info("Cleaning complete. Returning cleaned warnings DataFrame.")
-    return warnings[constants.columns_data_warnings()]
+    return warnings[common_constants.columns_warnings]
 
 def exists_data_warnings(event: str) -> bool:
     """
@@ -365,7 +369,7 @@ def exists_data_warnings(event: str) -> bool:
     Returns:
         bool: True if warning files exist for the event, False otherwise.
     """
-    return os.path.exists(constants.retrieve_filepath("warnings", event))
+    return os.path.exists(common_constants.retrieve_filepath("warnings", event))
 
 def retrieve_data_warnings(event: str) -> pd.DataFrame:
     """
@@ -384,7 +388,7 @@ def retrieve_data_warnings(event: str) -> pd.DataFrame:
         FileNotFoundError: If the CSV file for the specified event does not exist.
         pd.errors.ParserError: If there is an error parsing the CSV file.
     """
-    return __prepare_data_warnings(pd.read_csv(constants.retrieve_filepath("warnings", event=event), sep="\t"))
+    return __prepare_data_warnings(pd.read_csv(common_constants.retrieve_filepath("warnings", event=event), sep="\t"))
 
 def __prepare_data_warnings(warnings: pd.DataFrame) -> pd.DataFrame:
     """
@@ -421,7 +425,7 @@ def exists_data_stations() -> bool:
     Returns:
         bool: True if the file path for stations exists, False otherwise.
     """
-    return os.path.exists(constants.retrieve_filepath("stations"))
+    return os.path.exists(common_constants.retrieve_filepath("stations"))
 
 def retrieve_data_stations() -> pd.DataFrame:
     """
@@ -439,7 +443,7 @@ def retrieve_data_stations() -> pd.DataFrame:
                    an error message is logged and the exception is re-raised.
     """
     try:
-        return __prepare_data_stations(pd.read_csv(constants.retrieve_filepath("stations"), sep="\t"))
+        return __prepare_data_stations(pd.read_csv(common_constants.retrieve_filepath("stations"), sep="\t"))
     except Exception as e:
         logging.error(f"Error retrieving station data: {e}")
         raise
@@ -456,7 +460,7 @@ def __prepare_data_stations(stations: pd.DataFrame) -> pd.DataFrame:
         pd.DataFrame: Transformed DataFrame with renamed columns, formatted text fields, and converted coordinates.
     """
     # Rename columns according to the mapping defined in constants
-    stations.rename(columns=constants.mapping_observation_columns(), inplace=True)
+    stations.rename(columns=common_constants.mapping_observations_fields, inplace=True)
     
     # Format 'province' and 'name' columns to title case
     stations[["province", "name"]] = stations[["province", "name"]].applymap(str.title)
@@ -473,7 +477,7 @@ def __prepare_data_stations(stations: pd.DataFrame) -> pd.DataFrame:
         )
     
     # Select only the columns defined in constants
-    stations = stations.loc[:, constants.columns_data_stations()]
+    stations = stations.loc[:, common_constants.columns_stations]
     
     # Convert 'latitude', 'longitude', and 'altitude' to numeric values
     stations["latitude"] = pd.to_numeric(stations["latitude"], errors="coerce")
@@ -503,7 +507,7 @@ def retrieve_data_events() -> pd.DataFrame:
         FileNotFoundError: If the file specified by constants.retrieve_filepath("events") does not exist.
         pd.errors.ParserError: If there is an error parsing the file.
     """
-    return __prepare_data_events(pd.read_csv(constants.retrieve_filepath("events"), sep="\t"))
+    return __prepare_data_events(pd.read_csv(common_constants.retrieve_filepath("events"), sep="\t"))
 
 def __prepare_data_events(events: pd.DataFrame) -> pd.DataFrame:
     """
@@ -536,7 +540,7 @@ def retrieve_data_thresholds() -> pd.DataFrame:
     Returns:
         pd.DataFrame: A DataFrame containing the processed threshold data.
     """
-    return __prepare_data_thresholds(pd.read_csv(constants.retrieve_filepath("thresholds"), sep="\t"))
+    return __prepare_data_thresholds(pd.read_csv(common_constants.retrieve_filepath("thresholds"), sep="\t"))
 
 def __prepare_data_thresholds(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -557,8 +561,7 @@ def __prepare_data_thresholds(df: pd.DataFrame) -> pd.DataFrame:
         Exception: If an error occurs during the processing, it is logged and the exception is raised.
     """
     try:
-        cols = constants.columns_data_thresholds()
-        for c in cols:
+        for c in common_constants.columns_thresholds:
             if c not in ["geocode", "region", "area", "province"]:
                 df[c] = pd.to_numeric(df[c], errors="coerce")
         return df
@@ -579,7 +582,7 @@ def retrieve_data_geocodes() -> pd.DataFrame:
     Returns:
         pd.DataFrame: A DataFrame containing the processed threshold data.
     """
-    return pd.read_csv(constants.retrieve_filepath("geocodes"), sep="\t")
+    return pd.read_csv(common_constants.retrieve_filepath("geocodes"), sep="\t")
 
 """
     Observations
@@ -594,7 +597,7 @@ def exists_data_observations(event: str) -> bool:
     Returns:
         bool: True if the observation data file exists, False otherwise.
     """
-    return os.path.exists((constants.retrieve_filepath("observations", event)))
+    return os.path.exists((common_constants.retrieve_filepath("observations", event)))
 
 def retrieve_data_observations(event: str, stations: list) -> pd.DataFrame:
     """
@@ -613,9 +616,9 @@ def retrieve_data_observations(event: str, stations: list) -> pd.DataFrame:
         FileNotFoundError: If the file for the specified event does not exist.
         pd.errors.ParserError: If there is an error parsing the CSV file.
     """
-    return __prepare_data_observations(observations=(pd.read_csv(constants.retrieve_filepath("observations", event=event), sep="\t")), stations=stations)
+    return __prepare_data_observations(observations=(pd.read_csv(common_constants.retrieve_filepath("observations", event=event), sep="\t")), stations=stations, event=event)
 
-def __prepare_data_observations(observations: pd.DataFrame, stations: list) -> pd.DataFrame:
+def __prepare_data_observations(observations: pd.DataFrame, stations: list, event: str) -> pd.DataFrame:
     """
     Prepare and preprocess observational data.
 
@@ -630,10 +633,10 @@ def __prepare_data_observations(observations: pd.DataFrame, stations: list) -> p
         pd.DataFrame: Preprocessed DataFrame with renamed columns, filtered rows, and additional metrics.
     """
     logging.info("Renaming observation columns...")
-    observations.rename(columns=constants.mapping_observation_columns(), inplace=True)
+    observations.rename(columns=common_constants.mapping_observations_fields, inplace=True)
     
     logging.info("Selecting relevant columns...")
-    observations = observations[constants.columns_data_observations()]
+    observations = observations[common_constants.columns_observations]
     
     logging.info("Filtering observations by station IDs...")
     observations = observations[observations["idema"].isin(stations)]
@@ -653,11 +656,107 @@ def __prepare_data_observations(observations: pd.DataFrame, stations: list) -> p
     logging.info("Calculating additional precipitation metrics...")
     observations["uniform_precipitation_1h"] = np.round(observations["precipitation"] * 1 / 24, 1)
     observations["severe_precipitation_1h"] = np.round(observations["precipitation"] * float(__SEVERE_PRECIPITATION_BY_TIMEFRAME[1]), 1)
+    observations["extreme_precipitation_1h"] = np.round(observations["precipitation"] * float(__EXTREME_PRECIPITATION_BY_TIMEFRAME[1]), 1)
     observations["uniform_precipitation_12h"] = np.round(observations["precipitation"] * 12 / 24, 1)
-    observations["severe_precipitation_12h"] = np.round(observations["precipitation"] * float(__SEVERE_PRECIPITATION_BY_TIMEFRAME[12]), 1)
-    observations["snowfall_24h"] = observations.apply(
-        lambda row: row["precipitation"] if row["minimum_temperature"] < 5 else 0, axis=1
-    )
-    
+    observations["extreme_precipitation_12h"] = np.round(observations["precipitation"] * float(__EXTREME_PRECIPITATION_BY_TIMEFRAME[12]), 1)
+    if "RAIN" in event:
+        observations["snowfall_24h"] = observations.apply(lambda row: row["precipitation"] if row["maximum_temperature"] <= 5 else 0, axis=1)
+    else:
+        observations["snowfall_24h"] = observations.apply(lambda row: row["precipitation"] if row["minimum_temperature"] <= 5 else 0, axis=1)
+
     logging.info("Observational data preparation complete.")
     return observations
+
+"""
+    Geolocated stations
+"""
+def geolocate_stations() -> pd.DataFrame:
+    geocodes = retrieve_data_geocodes()
+    stations = retrieve_data_stations()
+    geocodes["geocode"] = geocodes["geocode"].astype(str)        
+    geocodes["area"] = geocodes["polygon"].apply(
+        lambda coordinates: Polygon(
+        [tuple(map(float, pair.split(","))) for pair in coordinates.split()]
+        )
+    )
+
+    stations["geocode"] = None
+    stations["point"] = stations.apply(
+        lambda x: Point(x["latitude"], x["longitude"]), axis=1
+    )
+    stations["geocode"] = stations.apply(
+        lambda station: next(
+            (a["geocode"] for _, a in geocodes.iterrows() if a["area"].contains(station["point"])),
+            None
+        ),
+        axis=1
+    )
+
+    stations.drop(columns=["point"], inplace=True)
+
+    stations.to_csv(common_constants.retrieve_filepath("geolocated"), sep="\t")
+
+def exists_geolocated_stations() -> bool:
+    """
+    Checks if the file list for stations exists.
+
+    Returns:
+        bool: True if the file path for stations exists, False otherwise.
+    """
+    return os.path.exists(common_constants.retrieve_filepath("geolocated"))
+
+def retrieve_geolocated_stations() -> pd.DataFrame:
+    """
+    Retrieve and prepare data for stations.
+
+    This function reads station data from a file specified by the constants module,
+    processes it, and returns it as a pandas DataFrame. The data is expected to be
+    in a tab-separated values (TSV) format.
+
+    Returns:
+        pd.DataFrame: A DataFrame containing the processed station data.
+
+    Raises:
+        Exception: If there is an error reading the file or processing the data,
+                   an error message is logged and the exception is re-raised.
+    """
+    try:
+        return __prepare_geolocated_stations(pd.read_csv(common_constants.retrieve_filepath("geolocated"), sep="\t"))
+    except Exception as e:
+        logging.error(f"Error retrieving geolocated data: {e}")
+        raise
+
+def __prepare_geolocated_stations(geolocated_sations: pd.DataFrame) -> pd.DataFrame:
+    """
+    Prepares and transforms the station data by renaming columns, formatting text fields,
+    and converting coordinate formats.
+
+    Args:
+        geolocated_sations (pd.DataFrame): DataFrame containing station data with columns that need to be transformed.
+
+    Returns:
+        pd.DataFrame: Transformed DataFrame with renamed columns, formatted text fields, and converted coordinates.
+    """
+    # Rename columns according to the mapping defined in constants
+    geolocated_sations.rename(columns=common_constants.mapping_observations_fields, inplace=True)
+    
+    # Format 'province' and 'name' columns to title case
+    geolocated_sations[["province", "name"]] = geolocated_sations[["province", "name"]].applymap(str.title)
+    
+    # Convert 'latitude' and 'longitude' from DMS to decimal degrees
+    if (not geolocated_sations["latitude"].dtype == "float64") or any(re.search(r'[a-zA-Z]', str(x)) for x in geolocated_sations["latitude"]):
+        geolocated_sations["latitude"] = geolocated_sations["latitude"].apply(
+            lambda x: __coordinate_dms_to_degrees(x, hemisphere=x[-1])
+        )
+
+    if (not geolocated_sations["longitude"].dtype == "float64") or any(re.search(r'[a-zA-Z]', str(x)) for x in geolocated_sations["longitude"]):
+        geolocated_sations["longitude"] = geolocated_sations["longitude"].apply(
+            lambda x: __coordinate_dms_to_degrees(x, hemisphere=x[-1])
+        )
+    
+    # Convert 'latitude', 'longitude', and 'altitude' to numeric values
+    geolocated_sations["latitude"] = pd.to_numeric(geolocated_sations["latitude"], errors="coerce")
+    geolocated_sations["longitude"] = pd.to_numeric(geolocated_sations["longitude"], errors="coerce")
+    geolocated_sations["altitude"] = pd.to_numeric(geolocated_sations["altitude"], errors="coerce")
+    
+    return geolocated_sations
