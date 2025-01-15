@@ -1,96 +1,121 @@
 """
-This module provides functions to interact with the AEMET Open Data API. It includes
-functions to fetch station inventory data, warning data, and observation data. The
-module also includes functions to handle the extraction and decompression of data files.
+This module provides functions for connecting to the AEMET OpenData API and processing meteorological data.
+
+Imports:
+    - gzip: For working with gzip compression.
+    - logging: For logging and handling log messages.
+    - os: For interacting with the operating system (paths, files, etc.).
+    - re: For working with regular expressions.
+    - tarfile: For working with tar archive files.
+    - pandas as pd: For data manipulation and analysis.
+    - requests: For making HTTP requests to access the AEMET API.
+    - requests.exceptions.RequestException: For handling request-specific exceptions.
+    - tenacity: For retrying operations.
+    - constants: For accessing global constants used throughout the project.
+    - datetime, timedelta: For working with dates and time differences.
 """
 
-# Python standard library modules
-import gzip  # For working with gzip-compressed files
-import logging  # For logging and handling log messages
-import os  # For interacting with the operating system (paths, files, etc.)
-import re  # For working with regular expressions
-import tarfile  # For handling tar-compressed files
+import gzip
+import logging
+import os
+import re
+import tarfile
+from datetime import datetime, timedelta
 
-# Third-party modules
-import pandas as pd  # For data manipulation and analysis
-import requests  # For making HTTP requests
-from requests.exceptions import RequestException  # For handling requests-related exceptions
-import tenacity  # For implementing automatic retries in operations
+import pandas as pd
+import requests
+from requests.exceptions import RequestException
+import tenacity
 
-# Local or custom modules
-import constants  # Global constants for the project
+import constants
 
-# Specific submodules from the standard library
-from datetime import datetime, timedelta  # For working with time differences (days, hours, etc.)
-
-# API key for accessing AEMET Open Data
 __OPENDATA_API_KEY = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbHZhcm8uc2FudWRvQGFsdW1ub3MudWkxLmVzIiwianRpIjoiMzMzMWQ4YjgtMjc3OS00NzNmLWFjNDEtYTI0Zjg1NzczOTc4IiwiaXNzIjoiQUVNRVQiLCJpYXQiOjE3MzExNzA2NzgsInVzZXJJZCI6IjMzMzFkOGI4LTI3NzktNDczZi1hYzQxLWEyNGY4NTc3Mzk3OCIsInJvbGUiOiIifQ.bNt0gjOKShj0PAf2XZ0IUMspaaKVlmdAxy4koTY7gjo"
 
-# Base URL for AEMET Open Data
 __OPENDATA_SERVER = "https://opendata.aemet.es/opendata"
 
-# Request headers for AEMET Open Data API requests
 __OPENDATA_REQUEST_HEADERS = {"cache-control": "no-cache"}
 
-# Query string parameters for AEMET Open Data API requests
-__OPENDATA_REQUEST_QUERYSTRING = {
-    "api_key": f"{__OPENDATA_API_KEY}"
-}
+__OPENDATA_REQUEST_QUERYSTRING = {"api_key": f"{__OPENDATA_API_KEY}"}
 
-# Endpoints for different types of data from AEMET Open Data API
 __OPENDATA_REQUEST_ENDPOINTS = {
     "warnings": "/api/avisos_cap/archivo/fechaini/{start_date}/fechafin/{end_date}",
     "observations": "/api/valores/climatologicos/diarios/datos/fechaini/{start_date}/fechafin/{end_date}/todasestaciones",
-    #"stations": "/api/valores/climatologicos/inventarioestaciones/todasestaciones/",    
-    #"geocodes": ""
+    # "stations": "/api/valores/climatologicos/inventarioestaciones/todasestaciones/",
+    # "geocodes": ""
 }
 
-# Constants for file names
 __CAPS_TAR_FILENAME = "caps.tar"
+
 
 # Retry decorator for API requests
 def retry_on_request_exception(func):
+    """Decorate a function to retry it if a requests.exceptions.RequestException is raised. The function will be retried up to 3 times with a 5-second wait between attempts.
+
+    Args:
+        func: The function to decorate.
+
+    Returns:
+        The decorated function.
+    """
+    
     return tenacity.retry(
         wait=tenacity.wait_fixed(5),
         stop=tenacity.stop_after_attempt(3),
         retry=tenacity.retry_if_exception_type(RequestException),
     )(func)
 
+
 def __build_request_url(endpoint: str) -> str:
-    """
-    Constructs the full request URL for a given AEMET Open Data API endpoint.
+    """Build a request URL for a given endpoint.
 
-    Args:
-        endpoint (str): The endpoint to build the URL for.
+    Parameters
+    ----------
+    endpoint : str
+        The endpoint for which to build the request URL.
 
-    Returns:
-        str: The full request URL with the API key included.
+    Returns
+    -------
+    str
+        The request URL.
     """
+
     return f"{__OPENDATA_SERVER}{__OPENDATA_REQUEST_ENDPOINTS[endpoint]}?api_key={__OPENDATA_API_KEY}"
 
-def set_api_key(api_key: str):
-    """
-    Sets the API key for accessing the AEMET Open Data service.
 
-    Args:
-        api_key (str): The API key to be used for accessing the AEMET Open Data service.
+def set_api_key(api_key: str):
+    """Set the AEMET OpenData API key.
+
+    Parameters
+    ----------
+    api_key : str
+        The API key to set.
+
+    Returns
+    -------
+    None
     """
+
     global __OPENDATA_API_KEY
     __OPENDATA_API_KEY = api_key
+
 
 @retry_on_request_exception
 def __request_caps(event: str, date: datetime):
     """
-    Requests and downloads warning data from the AEMET OpenData service for a specific event and date.
+    Download warnings for a given event and date.
 
-    Args:
-        event (str): The event type for which warnings data is requested.
-        date (datetime): The date for which warnings data is requested.
+    Parameters
+    ----------
+    event : str
+        The event identifier for which to download warnings.
+    date : datetime
+        The date for which to download warnings.
 
-    Raises:
-        RequestException: If there is an error while making the HTTP request.
-        ValueError: If there is an error while parsing the JSON response.
+    Returns
+    -------
+    None
     """
+
     try:
         response = requests.get(
             __build_request_url("warnings").format(
@@ -110,7 +135,9 @@ def __request_caps(event: str, date: datetime):
 
     try:
         download_file = os.path.join(
-            constants.get_path_to_dir("warnings", event), date.strftime("%Y%m%d"), __CAPS_TAR_FILENAME
+            constants.get_path_to_dir("warnings", event),
+            date.strftime("%Y%m%d"),
+            __CAPS_TAR_FILENAME,
         )
         with requests.get(download_url, stream=True) as response:
             response.raise_for_status()
@@ -121,18 +148,25 @@ def __request_caps(event: str, date: datetime):
         logging.error(f"Error downloading data: {e}")
         raise
 
+
 def fetch_caps(event: str, start: datetime, end: datetime):
     """
-    Fetches and extracts warning data from the AEMET Open Data API for a specified date range.
+    Downloads and extracts warnings for a given event and date range.
 
-    Args:
-        event (str): The event identifier for which to fetch warnings.
-        start (datetime): The start date of the range for which to fetch warnings.
-        end (datetime): The end date of the range for which to fetch warnings.
+    Parameters
+    ----------
+    event : str
+        The event identifier for which to download warnings.
+    start : datetime
+        The start date of the event.
+    end : datetime
+        The end date of the event.
 
-    Raises:
-        Exception: If there is an error while fetching or extracting warnings for any day in the range.
+    Returns
+    -------
+    None
     """
+
     logging.info(f"Downloading warnings between {start:%Y-%m-%d} and {end:%Y-%m-%d}.")
     for n in range(int((end - start).days) + 1):
         try:
@@ -146,22 +180,36 @@ def fetch_caps(event: str, start: datetime, end: datetime):
             __extract_tars(event, (start + timedelta(n)))
         except Exception as e:
             logging.error(f"Error extracting warnings: {e}")
-            raise        
+            raise
+
 
 def __extract_tars(event: str, date: datetime):
     """
-    Extracts warning data from tar files and decompresses any gzipped files within.
+    Extracts tar files containing warnings for a specific event and date.
 
-    Args:
-        event (str): The event type for which warnings data is being extracted.
-        date (datetime): The date for which warnings data is being extracted.
+    This function extracts all files from a tar archive located in the 
+    specified event and date directory. After extraction, the tar file is 
+    removed. If any gzipped files are present in the extracted content, 
+    they are further decompressed.
 
-    Raises:
-        Exception: If there is an error during the extraction or decompression process.
+    Parameters
+    ----------
+    event : str
+        The event identifier for which to extract warnings.
+    date : datetime
+        The date corresponding to the warnings being extracted.
+
+    Raises
+    ------
+    Exception
+        If an error occurs during extraction or file deletion.
     """
-    extraction_path = os.path.join(constants.get_path_to_dir("warnings", event), date.strftime("%Y%m%d"))
+
+    extraction_path = os.path.join(
+        constants.get_path_to_dir("warnings", event), date.strftime("%Y%m%d")
+    )
     tar_path = os.path.join(extraction_path, __CAPS_TAR_FILENAME)
-    
+
     try:
         logging.info(f"Extracting warnings in {extraction_path}.")
         with tarfile.open(tar_path, "r") as t:
@@ -169,7 +217,7 @@ def __extract_tars(event: str, date: datetime):
             logging.info(f"Extracting {len(members)} files.")
             for member in members:
                 t.extract(member, path=extraction_path)
-        
+
         try:
             os.remove(tar_path)
         except Exception as e:
@@ -181,22 +229,34 @@ def __extract_tars(event: str, date: datetime):
         logging.error(f"Error during extraction: {e}")
         raise
 
+
 def __extract_gzips(path: str):
     """
-    Extracts gzipped files in the specified directory and decompresses them.
+    Decompresses gzip files in the given path.
 
-    Args:
-        path (str): The directory path where gzipped files are located.
+    This function is an auxiliary function used by :func:`fetch_caps` to extract
+    gzipped files that are contained in the tar archives downloaded from AEMET's
+    OpenData service.
 
-    Raises:
-        Exception: If there is an error during the decompression process.
+    Parameters
+    ----------
+    path : str
+        The path to the directory containing the gzip files to be decompressed.
+
+    Raises
+    ------
+    Exception
+        If an error occurs during decompression or file deletion.
     """
+
     logging.info(f"Decompressing gzips in {path}.")
     try:
         gz_files = [f for f in os.listdir(path) if f.endswith(".gz")]
         for gz in gz_files:
             file = os.path.join(path, re.search(r"\d+", gz).group() + ".tar")
-            with gzip.open(os.path.join(path, gz), "rb") as gz_in, open(file, "wb") as gz_out:
+            with gzip.open(os.path.join(path, gz), "rb") as gz_in, open(
+                file, "wb"
+            ) as gz_out:
                 gz_out.write(gz_in.read())
             try:
                 os.remove(os.path.join(path, gz))
@@ -209,16 +269,25 @@ def __extract_gzips(path: str):
         logging.error(f"Error during gzip decompression: {e}")
         raise
 
+
 def __extract_caps(path: str):
     """
-    Extracts tar files containing CAP files in the specified directory.
+    Extracts CAP files from tar archives in the specified directory.
 
-    Args:
-        path (str): The directory path where tar files are located.
+    This function iterates over all tar files in the given directory, extracts
+    their contents, and subsequently deletes the tar files.
 
-    Raises:
-        Exception: If there is an error during the extraction or deletion process.
+    Parameters
+    ----------
+    path : str
+        The path to the directory containing the tar files to be extracted.
+
+    Raises
+    ------
+    Exception
+        If an error occurs during extraction or file deletion.
     """
+
     logging.info(f"Extracting CAP files in {path}.")
     try:
         tar_files = [f for f in os.listdir(path) if f.endswith(".tar")]
@@ -236,21 +305,32 @@ def __extract_caps(path: str):
         logging.error(f"Error during CAP extraction: {e}")
         raise
 
+
 @retry_on_request_exception
 def __request_observations(date: datetime) -> pd.DataFrame:
     """
-    Requests and retrieves observation data from the AEMET OpenData service for a specific date.
+    Downloads observations for a given date from AEMET's OpenData service.
 
-    Args:
-        date (datetime): The date for which observation data is requested.
+    This function downloads observations for a given date using the OpenData
+    service. The observations are downloaded for the given date and returned as a
+    DataFrame.
 
-    Returns:
-        pd.DataFrame: A DataFrame containing the observation data retrieved from the API.
+    Parameters
+    ----------
+    date : datetime
+        The date for which to download observations.
 
-    Raises:
-        RequestException: If there is an error while making the HTTP request.
-        ValueError: If there is an error while parsing the JSON response.
+    Returns
+    -------
+    pd.DataFrame
+        The downloaded observations as a DataFrame.
+
+    Raises
+    ------
+    Exception
+        If an error occurs during the request or JSON parsing.
     """
+
     try:
         response = requests.get(
             __build_request_url("observations").format(
@@ -271,18 +351,30 @@ def __request_observations(date: datetime) -> pd.DataFrame:
         logging.error(f"Error parsing JSON: {e}")
         raise
 
+
 def fetch_observations(event: str, start: datetime, end: datetime) -> None:
     """
-    Fetches observation data from the AEMET Open Data API for a specified date range.
+    Downloads observations for a given event from AEMET's OpenData service.
 
-    Args:
-        event (str): The event identifier for which to fetch observations.
-        start (datetime): The start date of the range for which to fetch observations.
-        end (datetime): The end date of the range for which to fetch observations.
+    This function downloads observations for a given event using the OpenData
+    service. The observations are downloaded for each day of the event and saved
+    as a single file.
 
-    Raises:
-        Exception: If there is an error while fetching or saving observations.
+    Parameters
+    ----------
+    event : str
+        The event identifier for which to download observations.
+    start : datetime
+        The start date of the event.
+    end : datetime
+        The end date of the event.
+
+    Raises
+    ------
+    Exception
+        If an error occurs during the request, JSON parsing or data saving.
     """
+
     dfs = []
     for n in range((end - start).days):
         logging.info(f"Fetching observations for {(start + timedelta(n)):%Y-%m-%d}.")
@@ -291,7 +383,7 @@ def fetch_observations(event: str, start: datetime, end: datetime) -> None:
     observations_df = pd.concat(dfs, ignore_index=True)
     observations_df.rename(columns=constants.mapping_observations_fields, inplace=True)
     observations_df = observations_df[constants.columns_observations]
-    
+
     try:
         observations_df.to_csv(
             constants.get_path_to_file("observations", event),

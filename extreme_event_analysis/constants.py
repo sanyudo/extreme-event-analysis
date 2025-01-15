@@ -1,42 +1,86 @@
-"""
-This module defines constants and utility functions for extreme event analysis.
+"""Constants and utilities for the extreme event analysis project
+
+This module provides constants and utilities used throughout the extreme event
+analysis project.
+
+Imports:
+    - os: for interacting with the operating system (paths, files, etc.)
+    - typing: for type hints and annotations
 """
 
-# Python standard library modules
-import os  # For interacting with the operating system (paths, files, etc.)
+import os
 from typing import Dict, List, Set
 
-# File extension for data files
 file_extension = ".tsv"
 
-# Directory paths for storing data
 path_to_dir: Dict[str, List[str]] = {
     "root": [],
     "data": ["data"],
     "warnings": ["data", "warnings", "{event}"],
     "observations": ["data", "observations", "{event}"],
-    "analysis": ["data", "analysis", "{event}"]
+    "analysis": ["data", "analysis", "{event}"],
 }
 
-# File paths for different types of data files
 path_to_file: Dict[str, List[str]] = {
-    "stations": [*path_to_dir["root"], *path_to_dir["data"], f"weather_stations{file_extension}"],
-    "thresholds": [*path_to_dir["root"], *path_to_dir["data"], f"parameter_thresholds{file_extension}"],
-    "geocodes": [*path_to_dir["root"], *path_to_dir["data"], f"geocode_polygons{file_extension}"],
-    "geolocated": [*path_to_dir["root"], *path_to_dir["data"], f"geolocated_stations{file_extension}"],
-    "events": [*path_to_dir["root"], *path_to_dir["data"], f"events_list{file_extension}"],
-    "warnings": [*path_to_dir["root"], *path_to_dir["warnings"], f"warnings{file_extension}"],
-    "observations": [*path_to_dir["root"], *path_to_dir["observations"], f"observations{file_extension}"],
-    "analysis": [*path_to_dir["root"], *path_to_dir["analysis"], f"analysis{file_extension}"],
-    "results": [*path_to_dir["root"], *path_to_dir["analysis"], f"observed_data{file_extension}"],
-    "situations": [*path_to_dir["root"], *path_to_dir["analysis"], f"observed_situation{file_extension}"],
-    "predictions": [*path_to_dir["root"], *path_to_dir["analysis"], f"predicted_warnings{file_extension}"],
+    "stations": [
+        *path_to_dir["root"],
+        *path_to_dir["data"],
+        f"weather_stations{file_extension}",
+    ],
+    "thresholds": [
+        *path_to_dir["root"],
+        *path_to_dir["data"],
+        f"parameter_thresholds{file_extension}",
+    ],
+    "geocodes": [
+        *path_to_dir["root"],
+        *path_to_dir["data"],
+        f"geocode_polygons{file_extension}",
+    ],
+    "geolocated": [
+        *path_to_dir["root"],
+        *path_to_dir["data"],
+        f"geolocated_stations{file_extension}",
+    ],
+    "events": [
+        *path_to_dir["root"],
+        *path_to_dir["data"],
+        f"events_list{file_extension}",
+    ],
+    "warnings": [
+        *path_to_dir["root"],
+        *path_to_dir["warnings"],
+        f"warnings{file_extension}",
+    ],
+    "observations": [
+        *path_to_dir["root"],
+        *path_to_dir["observations"],
+        f"observations{file_extension}",
+    ],
+    "analysis": [
+        *path_to_dir["root"],
+        *path_to_dir["analysis"],
+        f"analysis{file_extension}",
+    ],
+    "results": [
+        *path_to_dir["root"],
+        *path_to_dir["analysis"],
+        f"observed_data{file_extension}",
+    ],
+    "situations": [
+        *path_to_dir["root"],
+        *path_to_dir["analysis"],
+        f"observed_situation{file_extension}",
+    ],
+    "predictions": [
+        *path_to_dir["root"],
+        *path_to_dir["analysis"],
+        f"predicted_warnings{file_extension}",
+    ],
 }
 
-# Namespace for CAP XML data
 namespace_cap: Dict[str, str] = {"cap": "urn:oasis:names:tc:emergency:cap:1.2"}
 
-# Mapping of parameters (ids) and observations
 mapping_parameters_id: Dict[str, str] = {
     "BT": "minimum_temperature",
     "AT": "maximum_temperature",
@@ -44,17 +88,19 @@ mapping_parameters_id: Dict[str, str] = {
     "PR_1H": "precipitation_1h",
     "PR_12H": "precipitation_12h",
     "NE": "snowfall_24h",
-    "VI": "wind_speed"
+    "VI": "wind_speed",
 }
 
-# Parameters for observations
 allowed_parameters_ids: List[str] = list(mapping_parameters_id.keys())
 allowed_parameters: List[str] = list(mapping_parameters_id.values())
 
-# Mapping of severity levels to numeric values
-mapping_severity_values: Dict[str, int] = {"verde": 0, "amarillo": 1, "naranja": 2, "rojo": 3}
+mapping_severity_values: Dict[str, int] = {
+    "verde": 0,
+    "amarillo": 1,
+    "naranja": 2,
+    "rojo": 3,
+}
 
-# Mapping of station column names from source to target
 mapping_stations_fields: Dict[str, str] = {
     "indicativo": "idema",
     "nombre": "name",
@@ -66,7 +112,6 @@ mapping_stations_fields: Dict[str, str] = {
 
 columns_stations: List[str] = list(mapping_stations_fields.values())
 
-# Mapping of observation column names from source to target
 mapping_observations_fields: Dict[str, str] = {
     "fecha": "date",
     "indicativo": "idema",
@@ -76,11 +121,10 @@ mapping_observations_fields: Dict[str, str] = {
     "racha": "wind_speed",
 }
 
-columns_observations : List[str] = list(mapping_observations_fields.values())
+columns_observations: List[str] = list(mapping_observations_fields.values())
 
 columns_geocodes = ["geocode", "polygon"]
 
-# Columns for warning data
 columns_warnings: List[str] = [
     "id",
     "effective",
@@ -92,7 +136,6 @@ columns_warnings: List[str] = [
     "polygon",
 ]
 
-# Columns for threshold data
 columns_thresholds: List[str] = [
     "geocode",
     "region",
@@ -118,7 +161,6 @@ columns_thresholds: List[str] = [
     "snowfall_24h_red_warning",
 ]
 
-# Columns for CAP XML data
 fields_cap: List[str] = [
     "id",
     "sent",
@@ -132,40 +174,61 @@ fields_cap: List[str] = [
     "polygon",
 ]
 
-# Columns for event data
 columns_events: Set[str] = {"id", "season", "category", "name", "start", "end"}
 
 def set_path_to_root(root: str) -> None:
     """
-    Set the root directory path in the DIR_PATHS dictionary.
+    Set the root path for the directory structure.
 
     Args:
-        root (str): The root directory path to be set.
+        root (str): The root directory path to be set in the path_to_dir dictionary.
     """
+
     path_to_dir["root"] = [root]
+
 
 def get_path_to_file(file: str, event: str = "") -> str:
     """
-    Constructs a file path by formatting and joining path components.
+    Construct a path to a file based on the given file name and event ID (if applicable).
 
     Args:
-        file (str): The key to retrieve the file path template from FILE_PATHS.
-        event (str, optional): The event string to format into the path template. Defaults to an empty string.
-
+        file (str): The name of the file as specified in the path_to_file dictionary.
+        event (str, optional): The event ID to use in the path construction. Defaults to "".
+    
     Returns:
-        str: The constructed file path.
+        str: The fully constructed path to the file.
     """
-    return os.path.join(*[item.format(event=event) if isinstance(item, str) and "{event}" in item else item for item in path_to_file[file]])
+    return os.path.join(
+        *[
+            (
+                item.format(event=event)
+                if isinstance(item, str) and "{event}" in item
+                else item
+            )
+            for item in path_to_file[file]
+        ]
+    )
+
 
 def get_path_to_dir(dir: str, event: str = "") -> str:
     """
-    Constructs a directory path by formatting and joining components from a predefined dictionary.
+    Construct a path to a directory based on the given directory name and event ID (if applicable).
 
     Args:
-        dir (str): The key to retrieve the directory path components from the DIR_PATHS dictionary.
-        event (str, optional): An optional event string to format into the path components. Defaults to an empty string.
-
+        dir (str): The name of the directory as specified in the path_to_dir dictionary.
+        event (str, optional): The event ID to use in the path construction. Defaults to "".
+    
     Returns:
-        str: The constructed directory path.
+        str: The fully constructed path to the directory.
     """
-    return os.path.join(*path_to_dir["root"], *[item.format(event=event) if isinstance(item, str) and "{event}" in item else item for item in path_to_dir[dir]])    
+    return os.path.join(
+        *path_to_dir["root"],
+        *[
+            (
+                item.format(event=event)
+                if isinstance(item, str) and "{event}" in item
+                else item
+            )
+            for item in path_to_dir[dir]
+        ],
+    )
