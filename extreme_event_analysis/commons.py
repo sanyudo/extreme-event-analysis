@@ -20,7 +20,7 @@ import numpy as np # For operations
 # Local or custom modules
 import constants  # Global constants for the project
 
-__SEVERE_PRECIPITATION_BY_TIMEFRAME = {1: 0.2, 12: 0.8}
+__SEVERE_PRECIPITATION_BY_TIMEFRAME = {1: 0.33, 12: 0.90}
 
 def ensure_directories(event: str, start: datetime, end: datetime) -> bool:
     """
@@ -655,7 +655,9 @@ def __prepare_data_observations(observations: pd.DataFrame, stations: list) -> p
     observations["severe_precipitation_1h"] = np.round(observations["precipitation"] * float(__SEVERE_PRECIPITATION_BY_TIMEFRAME[1]), 1)
     observations["uniform_precipitation_12h"] = np.round(observations["precipitation"] * 12 / 24, 1)
     observations["severe_precipitation_12h"] = np.round(observations["precipitation"] * float(__SEVERE_PRECIPITATION_BY_TIMEFRAME[12]), 1)
-    observations["snowfall_24h"] = observations["precipitation"]
+    observations["snowfall_24h"] = observations.apply(
+        lambda row: row["precipitation"] if row["minimum_temperature"] < 5 else 0, axis=1
+    )
     
     logging.info("Observational data preparation complete.")
     return observations

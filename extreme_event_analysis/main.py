@@ -28,6 +28,8 @@ for i, event in events.iterrows():
     analysis.fetch_data()
     logging.info(f"Loading data.")
     analysis.load_data()
+    logging.info(f"Obtain observations.")
+    analysis.obtain_observations()     
     logging.info(f"Preparing data.")
     analysis.prepare_analysis()    
     logging.info(f"Writing data.")

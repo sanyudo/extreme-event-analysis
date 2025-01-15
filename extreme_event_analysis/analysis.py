@@ -3,7 +3,7 @@ import numpy as np
 import os
 from datetime import datetime, timedelta
 from shapely import Point, Polygon
-import extreme_event_analysis.aemet as aemet
+import aemet
 import commons
 import constants
 import logging
@@ -121,12 +121,7 @@ class EventAnalysis:
                 logging.info(f"... caps not found. Downloading")
                 aemet.fetch_caps(event=(self.get_event_id()), start=(self.get_event_start()), end=(self.get_event_end()))
             commons.convert_caps_to_warnings(event=(self.get_event_id()))
-
-        logging.info(f"Checking for observations file ...")
-        if not commons.exists_data_observations(event=(self.get_event_id())):
-            logging.info(f"... observations file not found. Downloading")
-            aemet.fetch_observations(event=(self.get_event_id()), start=(self.get_warnings_start()), end=(self.get_warnings_end()))            
-
+            
     def load_data(self):
         logging.info(f"Loading stations inventory ...")
         self.set_stations(stations=commons.retrieve_data_stations())
@@ -140,10 +135,17 @@ class EventAnalysis:
         logging.info(f"Loading warnings data ...")
         self.set_warnings(warnings=commons.retrieve_data_warnings(event=self.get_event_id()))
 
+        commons.clean_raw(event=self.get_event_id())
+
+    def obtain_observations(self):
+        logging.info(f"Checking for observations file ...")
+        if not commons.exists_data_observations(event=(self.get_event_id())):
+            logging.info(f"... observations file not found. Downloading")
+            aemet.fetch_observations(event=(self.get_event_id()), start=(self.get_warnings_start()), end=(self.get_warnings_end()))
+
         logging.info(f"Loading observations data ...")
         self.set_observations(observations=commons.retrieve_data_observations(event=self.get_event_id(), stations=self.get_stations()["idema"].tolist()))
 
-        commons.clean_raw(event=self.get_event_id())
 
     def prepare_analysis(self):
         logging.info("Starting analysis preparation")
@@ -179,6 +181,7 @@ class EventAnalysis:
 
         stations["geocode"] = stations["geocode"].astype(str)
         stations.drop(columns=["point"], inplace=True)
+        stations.dropna(subset=["geocode"], inplace=True)
         self.set_stations(stations[constants.columns_analysis_stations()])        
 
     def __prepare_observations(self):
@@ -203,8 +206,11 @@ class EventAnalysis:
             observations,
             thresholds,
             on="geocode",
-            suffixes=("", "")
+            suffixes=("", "thresholds_")
         )
+
+        logging.info("Dropping threshold columns from observations")
+        observations = observations.loc[:, ~observations.columns.str.startswith("thresholds_")]
 
         logging.info("Calculating minimum temperature severity")
         observations["minimum_temperature_severity"] = observations.apply(
