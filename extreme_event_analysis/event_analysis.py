@@ -1,12 +1,9 @@
 import pandas as pd
 import numpy as np
-import os
-import shutil
 from datetime import datetime, timedelta
-from shapely import Point, Polygon
-import aemet_client
-import common_tasks
-import common_constants
+import aemet_opendata_connector
+import common_operations
+import constants
 import logging
 
 
@@ -17,12 +14,57 @@ class EventAnalysis:
     __event_start = datetime.now()
     __event_end = datetime.now()
 
-    __df_observations = pd.DataFrame()
-    __df_warnings = pd.DataFrame()
-    __df_situations = pd.DataFrame()
-    __df_stations = pd.DataFrame()
-    __df_thresholds = pd.DataFrame()
-    __df_geocodes = pd.DataFrame()
+    __columns_analysis = [
+        "date",
+        "geocode",
+        "polygon",
+        "param_id",
+        "param_name",
+        "predicted_severity",
+        "predicted_value",
+        "observed_severity",
+        "observed_value"
+        ] 
+
+    __columns_results = [
+        "date",
+        "idema",
+        "name",
+        "geocode",
+        "polygon",        
+        "province",
+        "latitude",
+        "longitude",
+        "altitude",
+        "minimum_temperature",        
+        "minimum_temperature_severity",
+        "maximum_temperature",        
+        "maximum_temperature_severity",
+        "uniform_precipitation_1h",                    
+        "uniform_precipitation_1h_severity",
+        "uniform_precipitation_12h",              
+        "uniform_precipitation_12h_severity",
+        "severe_precipitation_1h",            
+        "severe_precipitation_1h_severity",
+        "severe_precipitation_12h",                                
+        "severe_precipitation_12h_severity",
+        "extreme_precipitation_1h",            
+        "extreme_precipitation_1h_severity",
+        "extreme_precipitation_12h",                                
+        "extreme_precipitation_12h_severity",        
+        "snowfall_24h",                    
+        "snowfall_24h_severity",
+        "wind_speed",        
+        "wind_speed_severity"
+    ]     
+
+    __df_observations = pd.DataFrame(columns=constants.columns_observations)
+    __df_warnings = pd.DataFrame(columns=constants.columns_warnings)
+    __df_situations = pd.DataFrame(columns=constants.columns_warnings)
+    __df_stations = pd.DataFrame(columns=constants.columns_stations)
+    __df_thresholds = pd.DataFrame(columns=constants.columns_thresholds)
+    __df_geocodes = pd.DataFrame(columns=constants.columns_geocodes)
+    __df_analysis = pd.DataFrame(columns=__columns_analysis)
 
     def __init__(
         self, event_id: str, event_name: str, event_start: datetime, event_end: datetime
@@ -32,91 +74,84 @@ class EventAnalysis:
         self.__event_start = event_start
         self.__event_end = event_end
 
-    def get_event_name(self) -> str:
-        return self.__event_name
+    def get_event(self) -> str:
+        return { 
+            "id": self.__event_id,
+            "name": self.__event_name,
+            "start": self.__event_start,
+            "end": self.__event_end
+                }
 
-    def get_event_id(self) -> str:
-        return self.__event_id
-
-    def get_event_start(self) -> datetime:
-        return self.__event_start
-    
     def get_warnings_start(self) -> datetime:
         warnings = self.__df_warnings.copy()
-        warnings["severity_mapped"] = warnings["severity"].map(common_constants.mapping_severity_values)
+        warnings["severity_mapped"] = warnings["severity"].map(constants.mapping_severity_values)
         filtered_warnings = warnings[warnings["severity_mapped"] >= 1]
         if not filtered_warnings.empty:
             return filtered_warnings["effective"].min()
         else:
             return self.__event_start    
-
-    def get_event_end(self) -> datetime:
-        return self.__event_end
     
     def get_warnings_end(self) -> datetime:
         warnings = self.__df_warnings.copy()
-        warnings["severity_mapped"] = warnings["severity"].map(common_constants.mapping_severity_values)
+        warnings["severity_mapped"] = warnings["severity"].map(constants.mapping_severity_values)
         filtered_warnings = warnings[warnings["severity_mapped"] >= 1]
         if not filtered_warnings.empty:
             return filtered_warnings["effective"].max()
         else:
             return self.__event_end       
 
-    def get_event_duration(self) -> timedelta:
-        return self.__event_end - self.__event_start
-
     def fetch_warnings(self):
-        common_tasks.ensure_directories(
+        common_operations.ensure_directories(
             event=(self.__event_id), start=(self.__event_start), end=(self.__event_end))
 
         logging.info(f"Checking for warnings file ...")
-        if not common_tasks.exists_data_warnings(event=(self.__event_id)):
+        if not common_operations.exist_warnings(event=(self.__event_id)):
             logging.info(f"... warnings file not found. Checking for caps ...")
-            if not common_tasks.exists_files_caps(event=(self.__event_id)):
+            if not common_operations.exist_caps(event=(self.__event_id)):
                 logging.info(f"... caps not found. Downloading")
-                aemet_client.fetch_caps(event=(self.__event_id), start=(self.__event_start), end=(self.__event_end))
-            common_tasks.convert_caps_to_warnings(event=(self.__event_id))
+                aemet_opendata_connector.fetch_caps(event=(self.__event_id), start=(self.__event_start), end=(self.__event_end))
+            common_operations.caps_to_warnings(event=(self.__event_id))
 
         logging.info(f"Checking for geolocated stations file ...")
-        if not common_tasks.exists_geolocated_stations():
+        if not common_operations.exist_gelocated_stations():
             logging.info(f"... file not found.")
-            common_tasks.geolocate_stations()
+            common_operations.geolocate_stations()
           
     def load_data(self):
         logging.info(f"Loading stations inventory ...")
-        self.__df_stations = common_tasks.retrieve_geolocated_stations()
+        self.__df_stations = common_operations.get_geolocated_stations()
         
         logging.info(f"Loading thresholds list ...")
-        self.__df_thresholds =common_tasks.retrieve_data_thresholds()
+        self.__df_thresholds =common_operations.get_thresholds()
 
         logging.info(f"Loading thresholds list ...")
-        self.__df_geocodes = common_tasks.retrieve_data_geocodes()
+        self.__df_geocodes = common_operations.get_geocodes()
 
         logging.info(f"Loading warnings data ...")
-        self.__df_warnings = common_tasks.retrieve_data_warnings(event=self.__event_id)
+        self.__df_warnings = common_operations.get_warnings(event=self.__event_id)
 
-        common_tasks.clean_raw(event=self.__event_id)
+        common_operations.clean_files(event=self.__event_id)
 
     def fetch_observations(self):
         logging.info(f"Checking for observations file ...")
-        if not common_tasks.exists_data_observations(event=(self.__event_id)):
+        if not common_operations.exist_observations(event=(self.__event_id)):
             logging.info(f"... observations file not found. Downloading")
-            aemet_client.fetch_observations(event=(self.__event_id), start=(self.get_warnings_start()), end=(self.get_warnings_end()))
+            aemet_opendata_connector.fetch_observations(event=(self.__event_id), start=(self.get_warnings_start()), end=(self.get_warnings_end()))
 
         logging.info(f"Loading observations data ...")
-        self.__df_observations = common_tasks.retrieve_data_observations(event=self.__event_id, stations=self.__df_stations["idema"].tolist())
+        self.__df_observations = common_operations.get_observations(event=self.__event_id, stations=self.__df_stations["idema"].tolist())
 
     def prepare_analysis(self):
         logging.info("Starting analysis preparation")
         logging.info("Geolocating stations")
-        self.__geolocate_observations()
-        logging.info("Preparing observations data")
-        self.__prepare_observations()
+        self.geolocate_observations()
+        logging.info("Composing definitive observations data")
+        self.compose_observations()
         logging.info("Generating real situations")
-        self.__generate_situations()
+        self.generate_situations()
         logging.info("Analysis preparation completed")
 
-    def __geolocate_observations(self):
+    def geolocate_observations(self):
         logging.info("Preparing observations for comparison")
      
         self.__df_observations = pd.merge(
@@ -134,12 +169,12 @@ class EventAnalysis:
         )            
 
         logging.info("Reordering and initializing missing columns in observations")
-        for col in common_constants.analysis_columns_observations:
+        for col in self.__columns_results:
             if col not in self.__df_observations.columns:
                 self.__df_observations[col] = np.nan
-        self.__df_observations = self.__df_observations[common_constants.analysis_columns_observations]      
+        self.__df_observations = self.__df_observations[self.__columns_results]      
 
-    def __prepare_observations(self):
+    def compose_observations(self):
         logging.info("Preparing observed data for comparison")
         logging.info("Converting geocodes")
         self.__df_observations["geocode"] = self.__df_observations["geocode"].astype(int)
@@ -249,11 +284,11 @@ class EventAnalysis:
             axis=1
         )           
 
-        self.__df_observations = self.__df_observations[common_constants.analysis_columns_observations]
+        self.__df_observations = self.__df_observations[self.__columns_results]
 
-    def __generate_situations(self):
-        self.__df_situations = pd.DataFrame(columns=common_constants.columns_warnings)
-        mapping_values_to_severity = {v: k for k, v in common_constants.mapping_severity_values.items()}      
+    def generate_situations(self):
+        self.__df_situations = pd.DataFrame(columns=constants.columns_warnings)
+        mapping_values_to_severity = {v: k for k, v in constants.mapping_severity_values.items()}      
         for _, obs in self.__df_observations.iterrows():
             if obs["minimum_temperature_severity"] > 0:
                 new_row = pd.DataFrame([{
@@ -392,11 +427,14 @@ class EventAnalysis:
         else:
             return candidates.loc[candidates["param_value"].idxmax()]
 
-    def write_data(self):
-        path = f"P:\\TFM/results/{self.__event_id}/"
-        if os.path.exists(path):
-            shutil.rmtree(path)
-        os.makedirs(path)
-        self.__df_observations.to_csv(os.path.join(path, "observed_data.tsv"), sep="\t")
-        self.__df_warnings.to_csv(os.path.join(path, "predicted_warnings.tsv"), sep="\t")
-        self.__df_situations.to_csv(os.path.join(path, "observed_warnings.tsv"), sep="\t")
+    def analyze_data(self):
+        # Cogemos los datos de warnings y de situations, y los vamos comparando por geocode y por parámetro.
+        # ANALYSIS - Fecha - Geocode - PARAM - Expected situacion - Real situation - Expected value - Observed v
+        # alue
+        self.__df_analysis = pd.DataFrame(columns=self.__columns_analysis)
+        pass
+
+    def save_data(self):
+        self.__df_observations.to_csv(constants.get_path_to_file("results", self.__event_id), sep="\t")
+        self.__df_warnings.to_csv(constants.get_path_to_file("predictions", self.__event_id), sep="\t")
+        self.__df_situations.to_csv(constants.get_path_to_file("situations", self.__event_id), sep="\t")

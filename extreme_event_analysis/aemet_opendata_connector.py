@@ -18,8 +18,7 @@ from requests.exceptions import RequestException  # For handling requests-relate
 import tenacity  # For implementing automatic retries in operations
 
 # Local or custom modules
-import common_constants  # Global constants for the project
-import common_tasks  # Common functions from the extreme_event_analysis module
+import constants  # Global constants for the project
 
 # Specific submodules from the standard library
 from datetime import datetime, timedelta  # For working with time differences (days, hours, etc.)
@@ -111,7 +110,7 @@ def __request_caps(event: str, date: datetime):
 
     try:
         download_file = os.path.join(
-            common_constants.retrieve_dirpath("warnings", event), date.strftime("%Y%m%d"), __CAPS_TAR_FILENAME
+            constants.get_path_to_dir("warnings", event), date.strftime("%Y%m%d"), __CAPS_TAR_FILENAME
         )
         with requests.get(download_url, stream=True) as response:
             response.raise_for_status()
@@ -160,7 +159,7 @@ def __extract_tars(event: str, date: datetime):
     Raises:
         Exception: If there is an error during the extraction or decompression process.
     """
-    extraction_path = os.path.join(common_constants.retrieve_dirpath("warnings", event), date.strftime("%Y%m%d"))
+    extraction_path = os.path.join(constants.get_path_to_dir("warnings", event), date.strftime("%Y%m%d"))
     tar_path = os.path.join(extraction_path, __CAPS_TAR_FILENAME)
     
     try:
@@ -290,12 +289,12 @@ def fetch_observations(event: str, start: datetime, end: datetime) -> None:
         dfs.append(__request_observations(start + timedelta(n)))
 
     observations_df = pd.concat(dfs, ignore_index=True)
-    observations_df.rename(columns=common_constants.mapping_observations_fields, inplace=True)
-    observations_df = observations_df[common_constants.columns_observations]
+    observations_df.rename(columns=constants.mapping_observations_fields, inplace=True)
+    observations_df = observations_df[constants.columns_observations]
     
     try:
         observations_df.to_csv(
-            common_constants.retrieve_filepath("observations", event),
+            constants.get_path_to_file("observations", event),
             index=False,
             sep="\t",
         )

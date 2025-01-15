@@ -14,7 +14,8 @@ path_to_dir: Dict[str, List[str]] = {
     "root": [],
     "data": ["data"],
     "warnings": ["data", "warnings", "{event}"],
-    "observations": ["data", "observations", "{event}"]  
+    "observations": ["data", "observations", "{event}"],
+    "analysis": ["data", "analysis", "{event}"]
 }
 
 # File paths for different types of data files
@@ -26,6 +27,10 @@ path_to_file: Dict[str, List[str]] = {
     "events": [*path_to_dir["root"], *path_to_dir["data"], f"events_list{file_extension}"],
     "warnings": [*path_to_dir["root"], *path_to_dir["warnings"], f"warnings{file_extension}"],
     "observations": [*path_to_dir["root"], *path_to_dir["observations"], f"observations{file_extension}"],
+    "analysis": [*path_to_dir["root"], *path_to_dir["analysis"], f"analysis{file_extension}"],
+    "results": [*path_to_dir["root"], *path_to_dir["analysis"], f"observed_data{file_extension}"],
+    "situations": [*path_to_dir["root"], *path_to_dir["analysis"], f"observed_situation{file_extension}"],
+    "predictions": [*path_to_dir["root"], *path_to_dir["analysis"], f"predicted_warnings{file_extension}"],
 }
 
 # Namespace for CAP XML data
@@ -72,6 +77,8 @@ mapping_observations_fields: Dict[str, str] = {
 }
 
 columns_observations : List[str] = list(mapping_observations_fields.values())
+
+columns_geocodes = ["geocode", "polygon"]
 
 # Columns for warning data
 columns_warnings: List[str] = [
@@ -128,43 +135,7 @@ fields_cap: List[str] = [
 # Columns for event data
 columns_events: Set[str] = {"id", "season", "category", "name", "start", "end"}
 
-# Columns used in the analysis of weather observations
-analysis_columns_observations = [
-        "date",
-        "idema",
-        "name",
-        "geocode",
-        "polygon",        
-        "province",
-        "latitude",
-        "longitude",
-        "altitude",
-        "minimum_temperature",        
-        "minimum_temperature_severity",
-        "maximum_temperature",        
-        "maximum_temperature_severity",
-        "uniform_precipitation_1h",                    
-        "uniform_precipitation_1h_severity",
-        "uniform_precipitation_12h",              
-        "uniform_precipitation_12h_severity",
-        "severe_precipitation_1h",            
-        "severe_precipitation_1h_severity",
-        "severe_precipitation_12h",                                
-        "severe_precipitation_12h_severity",
-        "extreme_precipitation_1h",            
-        "extreme_precipitation_1h_severity",
-        "extreme_precipitation_12h",                                
-        "extreme_precipitation_12h_severity",        
-        "snowfall_24h",                    
-        "snowfall_24h_severity",
-        "wind_speed",        
-        "wind_speed_severity"
-    ] 
-
-
-
-
-def set_root(root: str) -> None:
+def set_path_to_root(root: str) -> None:
     """
     Set the root directory path in the DIR_PATHS dictionary.
 
@@ -173,7 +144,7 @@ def set_root(root: str) -> None:
     """
     path_to_dir["root"] = [root]
 
-def retrieve_filepath(file: str, event: str = "") -> str:
+def get_path_to_file(file: str, event: str = "") -> str:
     """
     Constructs a file path by formatting and joining path components.
 
@@ -186,8 +157,7 @@ def retrieve_filepath(file: str, event: str = "") -> str:
     """
     return os.path.join(*[item.format(event=event) if isinstance(item, str) and "{event}" in item else item for item in path_to_file[file]])
 
-
-def retrieve_dirpath(dir: str, event: str = "") -> str:
+def get_path_to_dir(dir: str, event: str = "") -> str:
     """
     Constructs a directory path by formatting and joining components from a predefined dictionary.
 
