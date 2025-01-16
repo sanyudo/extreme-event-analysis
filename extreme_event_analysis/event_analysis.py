@@ -4,6 +4,8 @@ This module provides a class for performing an event analysis.
 Imports:
 - pandas as pd: For data manipulation and analysis.
 - numpy as np: For numerical computations.
+- os: For interacting with the operating system (paths, files, etc.).
+- folium: For map drawing.
 - datetime, timedelta: For working with dates and time differences.
 - aemet_opendata_connector: For connecting to the AEMET OpenData API.
 - common_operations: For common operations and utilities.
@@ -13,6 +15,10 @@ Imports:
 
 import pandas as pd
 import numpy as np
+import os
+
+import folium
+from shapely import Point, Polygon
 from datetime import datetime, timedelta
 
 import aemet_opendata_connector
@@ -30,6 +36,9 @@ class EventAnalysis:
     __columns_analysis = [
         "date",
         "geocode",
+        "region",
+        "area",
+        "province",
         "polygon",
         "param_id",
         "param_name",
@@ -906,21 +915,6 @@ class EventAnalysis:
         else:
             return candidates.loc[candidates["param_value"].idxmax()]
 
-    def analyze_data(self):
-        # Cogemos los datos de warnings y de situations, y los vamos comparando por geocode y por parámetro.
-        # ANALYSIS - Fecha - Geocode - PARAM - Expected situacion - Real situation - Expected value - Observed v
-        # alue
-        """
-        Analyzes the data.
-
-        This method compares the expected warnings (self.__df_warnings) with the real situations (self.__df_situations)
-        and creates a DataFrame with the results. The DataFrame has the following columns:
-
-        The results are stored in the self.__df_analysis attribute.
-        """
-        self.__df_analysis = pd.DataFrame(columns=self.__columns_analysis)
-        pass
-
     def save_data(self):
         """
         Saves the analysis results to different files.
@@ -942,3 +936,193 @@ class EventAnalysis:
         self.__df_situations.to_csv(
             constants.get_path_to_file("situations", self.__event_id), sep="\t"
         )
+        self.__df_analysis.to_csv(
+            constants.get_path_to_file("analysis", self.__event_id), sep="\t"
+        )
+
+    def analyze_data(self):
+        """
+        Analyzes the data.
+
+        This method merges the predictions and observations datasets, and
+        creates a new DataFrame with the results of the analysis. The analysis
+        includes the geocode, parameter id, parameter name, predicted severity,
+        predicted value, observed severity, observed value, and polygon.
+
+        The analysis is saved to the 'analysis' attribute of the object.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+        analysis = pd.DataFrame(columns=self.__columns_analysis)
+        self.__df_geocodes["geocode"] = self.__df_geocodes["geocode"].astype(int)
+        self.__df_geocodes["geocode"] = self.__df_geocodes["geocode"].astype(str)
+
+        self.__df_warnings["geocode"] = self.__df_warnings["geocode"].astype(int)
+        self.__df_warnings["geocode"] = self.__df_warnings["geocode"].astype(str)
+        self.__df_warnings["severity"] = self.__df_warnings["severity"].map(
+            constants.mapping_severity_values
+        )
+        self.__df_warnings["param_name"].fillna("", inplace=True)
+
+        self.__df_situations["geocode"] = self.__df_situations["geocode"].astype(int)
+        self.__df_situations["geocode"] = self.__df_situations["geocode"].astype(str)
+        self.__df_situations["severity"] = self.__df_situations["severity"].map(
+            constants.mapping_severity_values
+        )
+        self.__df_situations["param_id"] = self.__df_situations["param_id"].apply(
+            lambda x: "PR_1H" if x.startswith("PR_1H") else x
+        )
+        self.__df_situations["param_id"] = self.__df_situations["param_id"].apply(
+            lambda x: "PR_12H" if x.startswith("PR_12H") else x
+        )
+        self.__df_situations["param_name"].fillna("", inplace=True)
+
+        merged_df = pd.merge(
+            self.__df_warnings,
+            self.__df_situations,
+            how="outer",
+            on=["geocode", "param_id", "effective"],
+            suffixes=("_pre", "_obs"),
+        )
+        merged_df["param_name_obs"] = merged_df["param_name_obs"].combine_first(
+            merged_df["param_name_pre"]
+        )
+        for _, item in merged_df.iterrows():
+            new_row = pd.DataFrame(
+                [
+                    {
+                        "date": item["effective"],
+                        "geocode": item["geocode"],
+                        "param_id": item["param_id"],
+                        "param_name": item["param_name_obs"],
+                        "predicted_severity": item["severity_pre"],
+                        "predicted_value": item["param_value_pre"],
+                        "observed_severity": item["severity_obs"],
+                        "observed_value": item["param_value_obs"],
+                    }
+                ]
+            )
+            analysis = pd.concat([analysis, new_row], ignore_index=True)
+        analysis["predicted_severity"].fillna(0, inplace=True)
+        analysis["observed_severity"].fillna(0, inplace=True)
+        analysis = pd.merge(analysis, self.__df_geocodes, on=["geocode"])
+        analysis["polygon"] = analysis["polygon_y"]
+        analysis["region"] = analysis["region_y"]
+        analysis["area"] = analysis["area_y"]
+        analysis["province"] = analysis["province_y"]
+        self.__df_analysis = analysis[self.__columns_analysis]
+
+    def draw_maps(self):
+        self.__draw_predicted_maps()
+        self.__draw_observed_maps()
+
+    def __draw_predicted_maps(self):
+        colors = ["green", "yellow", "orange", "red"]
+        colors_text = ["verde", "amarillo", "naranja", "rojo"]
+
+        draw_df = pd.merge(self.__df_warnings, self.__df_geocodes, on=["geocode"])
+        draw_df["polygon"] = draw_df["polygon_y"]
+        draw_df.drop(columns=["polygon_x", "polygon_y"], inplace=True)
+
+        logging.info("Starting to generate maps for warnings...")
+        for parameter in draw_df["param_id"].unique():
+            logging.info(f"Processing parameter: {parameter}")
+            for d in draw_df[
+                        (draw_df["param_id"] == parameter)]["effective"].unique():
+                logging.info(f"Creating map for date: {d}")
+                folium_map = folium.Map(Location=[40.4168, -3.7038], zoom_start=10)
+
+                param_description = ""
+
+                for _, w in draw_df[
+                    (draw_df["param_id"] == parameter) &
+                    (draw_df["effective"] == d)
+                ].iterrows():
+                    logging.info(f"Adding polygon for geocode: {w['geocode']}, severity: {w['severity']}")
+                    param_description = w["param_name"] if len(param_description) < len(w["param_name"]) else param_description
+                    tooltip_title = f"Aviso {colors_text[w['severity']]} por {param_description}"
+                    tooltip_location = f"{w['area']} ({w['province']}, {w['region']}"
+                    tooltip_value = f"{param_description}: {w['param_value']} {constants.mapping_parameters_units[parameter]}"
+
+                    folium.Polygon(
+                        locations= [tuple(map(float, pair.split(","))) for pair in w["polygon"].split()],
+                        fill=True,
+                        color="black",
+                        weight=1,                        
+                        fill_color=colors[w["severity"]],
+                        fill_opacity=0.6,
+                        tooltip=f"<div><b>{tooltip_title.upper()}</b><br><b>Área:</b> {tooltip_location}<br>{tooltip_value}</div>"
+                    ).add_to(folium_map)
+
+                title = f"""
+                    <h3 style="font-size: 20px; text-align: center; font-family: Arial, sans-serif;">
+                        {self.__event_name} ({self.__event_start.strftime('%d/%m/%Y')} - {self.__event_end.strftime('%d/%m/%Y')})</h3>
+                        <h3>Día {d.strftime('%d/%m/%Y')}. Avisos para {param_description}.</h3>
+                    
+                """
+                folium_map.get_root().html.add_child(folium.Element(title))                
+                map_save_path = os.path.join(
+                    constants.get_path_to_dir("maps", self.__event_id), 
+                    f"predicted_warnings_{d.strftime('%Y%m%d')}_{parameter}.html"
+                )
+                folium_map.save(map_save_path)
+                logging.info(f"Map saved to {map_save_path}")
+        logging.info("Map generation completed.")
+
+    def __draw_observed_maps(self):
+        colors = ["green", "yellow", "orange", "red"]
+        colors_text = ["verde", "amarillo", "naranja", "rojo"]
+
+        draw_df = pd.merge(self.__df_situations, self.__df_geocodes, on=["geocode"])
+        draw_df["polygon"] = draw_df["polygon_y"]
+        draw_df.drop(columns=["polygon_x", "polygon_y"], inplace=True)
+
+        logging.info("Starting to generate maps for warnings...")
+        for parameter in draw_df["param_id"].unique():
+            logging.info(f"Processing parameter: {parameter}")
+            for d in draw_df[
+                        (draw_df["param_id"] == parameter)]["effective"].unique():
+                logging.info(f"Creating map for date: {d}")
+                folium_map = folium.Map(Location=[40.4168, -3.7038], zoom_start=10)
+
+                param_description = ""
+
+                for _, w in draw_df[
+                    (draw_df["param_id"] == parameter) &
+                    (draw_df["effective"] == d)
+                ].iterrows():
+                    logging.info(f"Adding polygon for geocode: {w['geocode']}, severity: {w['severity']}")
+                    param_description = w["param_name"] if len(param_description) < len(w["param_name"]) else param_description
+                    tooltip_title = f"Aviso {colors_text[w['severity']]} por {param_description}"
+                    tooltip_location = f"{w['area']} ({w['province']}, {w['region']}"
+                    tooltip_value = f"{param_description}: {w['param_value']} {constants.mapping_parameters_units[parameter]}"
+
+                    folium.Polygon(
+                        locations= [tuple(map(float, pair.split(","))) for pair in w["polygon"].split()],
+                        fill=True,
+                        color="black",
+                        weight=1,
+                        fill_color=colors[w["severity"]],
+                        fill_opacity=0.6,
+                        tooltip=f"<div><b>{tooltip_title.upper()}</b><br><b>Área:</b> {tooltip_location}<br>{tooltip_value}</div>"
+                    ).add_to(folium_map)
+
+                title = f"""
+                    <h3 style="font-size: 20px; text-align: center; font-family: Arial, sans-serif;">
+                        {self.__event_name} ({self.__event_start.strftime('%d/%m/%Y')} - {self.__event_end.strftime('%d/%m/%Y')})</h3>
+                        <h3>Día {d.strftime('%d/%m/%Y')}. Observaciones para {param_description}.</h3>
+                """
+                folium_map.get_root().html.add_child(folium.Element(title))                
+                map_save_path = os.path.join(
+                    constants.get_path_to_dir("maps", self.__event_id), 
+                    f"observed_warnings_{d.strftime('%Y%m%d')}_{parameter}.html"
+                )
+                folium_map.save(map_save_path)
+                logging.info(f"Map saved to {map_save_path}")
+        logging.info("Map generation completed.")

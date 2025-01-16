@@ -19,6 +19,7 @@ path_to_dir: Dict[str, List[str]] = {
     "warnings": ["data", "warnings", "{event}"],
     "observations": ["data", "observations", "{event}"],
     "analysis": ["data", "analysis", "{event}"],
+    "maps": ["data", "analysis", "{event}", "maps"],
 }
 
 path_to_file: Dict[str, List[str]] = {
@@ -91,6 +92,16 @@ mapping_parameters_id: Dict[str, str] = {
     "VI": "wind_speed",
 }
 
+mapping_parameters_units: Dict[str, str] = {
+    "BT": "ºC",
+    "AT": "ºC",
+    "PR": "mm",
+    "PR_1H": "mm",
+    "PR_12H": "mm",
+    "NE": "cm",
+    "VI": "km/h",
+}
+
 allowed_parameters_ids: List[str] = list(mapping_parameters_id.keys())
 allowed_parameters: List[str] = list(mapping_parameters_id.values())
 
@@ -123,7 +134,7 @@ mapping_observations_fields: Dict[str, str] = {
 
 columns_observations: List[str] = list(mapping_observations_fields.values())
 
-columns_geocodes = ["geocode", "polygon"]
+columns_geocodes = ["geocode", "region", "area", "province", "polygon"]
 
 columns_warnings: List[str] = [
     "id",

@@ -877,14 +877,9 @@ def prepare_observations(
         observations["precipitation"] * float(__EXTREME_PRECIPITATION_BY_TIMEFRAME[12]),
         1,
     )
-    if "RAIN" in event:
+    if not "RAIN" in event:
         observations["snowfall_24h"] = observations.apply(
-            lambda row: row["precipitation"] if row["maximum_temperature"] <= 5 else 0,
-            axis=1,
-        )
-    else:
-        observations["snowfall_24h"] = observations.apply(
-            lambda row: row["precipitation"] if row["minimum_temperature"] <= 5 else 0,
+            lambda row: row["precipitation"] if row["minimum_temperature"] <= 0 else 2,
             axis=1,
         )
 
@@ -898,7 +893,7 @@ def geolocate_stations() -> pd.DataFrame:
 
     This function retrieves geocodes and stations data, calculates geometric areas from geocode polygons,
     and assigns a geocode to each station based on whether the station's geographic point is contained
-    within a geocode area. It outputs the geolocated stations data to a TSV file.
+    within a geocode shape. It outputs the geolocated stations data to a TSV file.
 
     Returns:
         pd.DataFrame: The geolocated stations with assigned geocodes.
@@ -907,7 +902,7 @@ def geolocate_stations() -> pd.DataFrame:
     geocodes = get_geocodes()
     stations = get_stations()
     geocodes["geocode"] = geocodes["geocode"].astype(str)
-    geocodes["area"] = geocodes["polygon"].apply(
+    geocodes["shape"] = geocodes["polygon"].apply(
         lambda coordinates: Polygon(
             [tuple(map(float, pair.split(","))) for pair in coordinates.split()]
         )
@@ -922,7 +917,7 @@ def geolocate_stations() -> pd.DataFrame:
             (
                 a["geocode"]
                 for _, a in geocodes.iterrows()
-                if a["area"].contains(station["point"])
+                if a["shape"].contains(station["point"])
             ),
             None,
         ),

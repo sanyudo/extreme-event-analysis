@@ -31,10 +31,12 @@ for i, event in events.iterrows():
     analysis.fetch_observations()     
     logging.info(f"Preparing data.")
     analysis.prepare_analysis()   
-    #logging.info(f"Analyzing data.")
-    #analysis.analyze_data()        
+    logging.info(f"Analyzing data.")
+    analysis.analyze_data()        
     logging.info(f"Writing data.")
     analysis.save_data()
+    logging.info(f"Draw maps.")
+    analysis.draw_maps()    
     logging.info("Analysis completed")
 
 
