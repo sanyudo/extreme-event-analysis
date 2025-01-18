@@ -27,6 +27,7 @@ import constants
 
 __SEVERE_PRECIPITATION_BY_TIMEFRAME = {1: 0.33, 12: 0.85}
 __EXTREME_PRECIPITATION_BY_TIMEFRAME = {1: 0.50, 12: 1.00}
+__SNOW_LEVEL = pd.read_csv(constants.get_path_to_file("snow_level"), sep="\t", names=["t", "-40", "-35", "-30", "-25", "-20"])
 
 
 def ensure_directories(event: str, start: datetime, end: datetime) -> bool:
@@ -217,6 +218,12 @@ def data_extract_caps(event: str) -> pd.DataFrame:
                 cap_expires = selected_info.find(
                     ".//cap:expires", constants.namespace_cap
                 ).text
+                try:
+                    cap_description = selected_info.find(
+                        ".//cap:description", constants.namespace_cap
+                    ).text
+                except:
+                    cap_description = ""
                 cap_event_code = selected_info.find(
                     ".//cap:eventCode/cap:value", constants.namespace_cap
                 ).text
@@ -260,6 +267,7 @@ def data_extract_caps(event: str) -> pd.DataFrame:
                         df.loc[len(df)] = {
                             "id": cap_identifier,
                             "sent": cap_sent,
+                            "description": cap_description,
                             "effective": cap_effective,
                             "expires": cap_expires,
                             "severity": cap_severity,
@@ -832,7 +840,6 @@ def prepare_observations(
     7. Calculates additional precipitation metrics.
     8. Calculates snowfall_24h column based on event category.
     """
-
     logging.info("Renaming observation columns...")
     observations.rename(columns=constants.mapping_observations_fields, inplace=True)
 
@@ -877,14 +884,63 @@ def prepare_observations(
         observations["precipitation"] * float(__EXTREME_PRECIPITATION_BY_TIMEFRAME[12]),
         1,
     )
-    if not "RAIN" in event:
-        observations["snowfall_24h"] = observations.apply(
-            lambda row: row["precipitation"] if row["minimum_temperature"] <= 0 else 2,
-            axis=1,
-        )
+    observations["snowfall_24h"] = observations.apply(
+        lambda row: estimate_snowfall(row["precipitation"], row["minimum_temperature"], row["maximum_temperature"], row["altitude"]),
+        axis=1,
+    )
+    observations["wind_speed"] = observations["wind_speed"] * 3.6
 
     logging.info("Observational data preparation complete.")
     return observations
+
+
+def estimate_snowfall(precipitation: float, minimum_temperature: float, maximum_temperature: float, altitude: float) -> int:
+    """
+    Estimates the snowfall in centimeters given a precipitation amount in mm and
+    the average temperature and altitude in meters.
+
+    The estimation is based on an empirical formula for the snow line in the
+    Pyrenees mountains, which is used as a proxy for the snow line in the
+    Iberian Peninsula.
+
+    Parameters
+    ----------
+    precipitation : float
+        The precipitation amount in mm.
+    temperature : float
+        The average temperature in degrees Celsius.
+    altitude : float
+        The altitude in meters.
+
+    Returns
+    -------
+    float
+        The estimated snowfall in centimeters.
+    """
+    if not __SNOW_LEVEL.index.name == "t":
+        __SNOW_LEVEL.set_index("t", inplace=True)
+
+    if precipitation > 0:
+        lapse_rate = 6.5
+        t_5500hpa = maximum_temperature + lapse_rate * (altitude - 5500) / 1000
+        t_850hpa = int(max(-10, min(10, np.round(minimum_temperature - (1500 - altitude)/1000 * 6.5, 0))))
+
+        if t_5500hpa > -20:
+            return 0
+        else:
+            t_5500hpa = min([-40, -35, -30, -25, -20], key=lambda num: abs(num - t_5500hpa))
+
+        target_altidude = float(__SNOW_LEVEL.loc[f"{t_850hpa}", f"{t_5500hpa}"])
+        snow_liquid_rate = max(0.5, min(1, (10 + (maximum_temperature)/2)))
+
+        if altitude < target_altidude:
+            return 0
+        else:
+            return int(np.round(precipitation * snow_liquid_rate, 0))
+    return 0
+
+    
+
 
 
 def geolocate_stations() -> pd.DataFrame:
@@ -902,7 +958,7 @@ def geolocate_stations() -> pd.DataFrame:
     geocodes = get_geocodes()
     stations = get_stations()
     geocodes["geocode"] = geocodes["geocode"].astype(str)
-    geocodes["shape"] = geocodes["polygon"].apply(
+    geocodes["geometry"] = geocodes["polygon"].apply(
         lambda coordinates: Polygon(
             [tuple(map(float, pair.split(","))) for pair in coordinates.split()]
         )
@@ -917,7 +973,7 @@ def geolocate_stations() -> pd.DataFrame:
             (
                 a["geocode"]
                 for _, a in geocodes.iterrows()
-                if a["shape"].contains(station["point"])
+                if a["geometry"].contains(station["point"])
             ),
             None,
         ),

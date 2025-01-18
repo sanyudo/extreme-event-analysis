@@ -1,8 +1,8 @@
 import logging
 from datetime import datetime
 import constants
-import common_operations
-from event_analysis import EventAnalysis
+import common
+from analysis import EventAnalysis
 
 # Configure logging
 logging.basicConfig(
@@ -17,10 +17,11 @@ logging.basicConfig(
 constants.set_path_to_root("P:\\TFM\\")
 
 # Retrieve data events
-events = common_operations.get_events()
+events = common.get_events()
 
 # Iterate over each event and perform analysis
-for i, event in events.iterrows():
+for i, event in events.sample(4, random_state=8).iterrows():
+    print(f"Starting analysis: {event['name']} ({event['start']} - {event['end']}). ID = {event['id']}")
     logging.info(f"Starting analysis: {event['name']} ({event['start']} - {event['end']}). ID = {event['id']}")
     analysis = EventAnalysis(event["id"], event["name"], event["start"], event["end"])
     logging.info(f"Fetching data.")
@@ -38,6 +39,7 @@ for i, event in events.iterrows():
     logging.info(f"Draw maps.")
     analysis.draw_maps()    
     logging.info("Analysis completed")
+    break
 
 
 

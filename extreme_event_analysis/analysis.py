@@ -5,7 +5,6 @@ Imports:
 - pandas as pd: For data manipulation and analysis.
 - numpy as np: For numerical computations.
 - os: For interacting with the operating system (paths, files, etc.).
-- folium: For map drawing.
 - datetime, timedelta: For working with dates and time differences.
 - aemet_opendata_connector: For connecting to the AEMET OpenData API.
 - common_operations: For common operations and utilities.
@@ -17,12 +16,11 @@ import pandas as pd
 import numpy as np
 import os
 
-import folium
-from shapely import Point, Polygon
 from datetime import datetime, timedelta
 
-import aemet_opendata_connector
-import common_operations
+import aemet_opendata
+import visuals
+import common
 import constants
 import logging
 
@@ -46,14 +44,13 @@ class EventAnalysis:
         "predicted_value",
         "observed_severity",
         "observed_value",
-    ]
+    ]    
 
     __columns_results = [
         "date",
         "idema",
         "name",
         "geocode",
-        "polygon",
         "province",
         "latitude",
         "longitude",
@@ -196,26 +193,26 @@ class EventAnalysis:
         None
         """
 
-        common_operations.ensure_directories(
+        common.ensure_directories(
             event=(self.__event_id), start=(self.__event_start), end=(self.__event_end)
         )
 
         logging.info(f"Checking for warnings file ...")
-        if not common_operations.exist_warnings(event=(self.__event_id)):
+        if not common.exist_warnings(event=(self.__event_id)):
             logging.info(f"... warnings file not found. Checking for caps ...")
-            if not common_operations.exist_caps(event=(self.__event_id)):
+            if not common.exist_caps(event=(self.__event_id)):
                 logging.info(f"... caps not found. Downloading")
-                aemet_opendata_connector.fetch_caps(
+                aemet_opendata.fetch_caps(
                     event=(self.__event_id),
                     start=(self.__event_start),
                     end=(self.__event_end),
                 )
-            common_operations.caps_to_warnings(event=(self.__event_id))
+            common.caps_to_warnings(event=(self.__event_id))
 
         logging.info(f"Checking for geolocated stations file ...")
-        if not common_operations.exist_gelocated_stations():
+        if not common.exist_gelocated_stations():
             logging.info(f"... file not found.")
-            common_operations.geolocate_stations()
+            common.geolocate_stations()
 
     def load_data(self):
         """
@@ -235,18 +232,18 @@ class EventAnalysis:
         """
 
         logging.info(f"Loading stations inventory ...")
-        self.__df_stations = common_operations.get_geolocated_stations()
+        self.__df_stations = common.get_geolocated_stations()
 
         logging.info(f"Loading thresholds list ...")
-        self.__df_thresholds = common_operations.get_thresholds()
+        self.__df_thresholds = common.get_thresholds()
 
         logging.info(f"Loading thresholds list ...")
-        self.__df_geocodes = common_operations.get_geocodes()
+        self.__df_geocodes = common.get_geocodes()
 
         logging.info(f"Loading warnings data ...")
-        self.__df_warnings = common_operations.get_warnings(event=self.__event_id)
+        self.__df_warnings = common.get_warnings(event=self.__event_id)
 
-        common_operations.clean_files(event=self.__event_id)
+        common.clean_files(event=self.__event_id)
 
     def fetch_observations(self):
         """
@@ -267,16 +264,16 @@ class EventAnalysis:
         """
 
         logging.info(f"Checking for observations file ...")
-        if not common_operations.exist_observations(event=(self.__event_id)):
+        if not common.exist_observations(event=(self.__event_id)):
             logging.info(f"... observations file not found. Downloading")
-            aemet_opendata_connector.fetch_observations(
+            aemet_opendata.fetch_observations(
                 event=(self.__event_id),
                 start=(self.get_warnings_start()),
                 end=(self.get_warnings_end()),
             )
 
         logging.info(f"Loading observations data ...")
-        self.__df_observations = common_operations.get_observations(
+        self.__df_observations = common.get_observations(
             event=self.__event_id, stations=self.__df_stations["idema"].tolist()
         )
 
@@ -686,7 +683,6 @@ class EventAnalysis:
                             "param_name": "Temperaturas mínimas",
                             "param_value": obs["minimum_temperature"],
                             "geocode": obs["geocode"],
-                            "polygon": obs["polygon"],
                         }
                     ]
                 )
@@ -706,7 +702,6 @@ class EventAnalysis:
                             "param_name": "Temperaturas máximas",
                             "param_value": obs["maximum_temperature"],
                             "geocode": obs["geocode"],
-                            "polygon": obs["polygon"],
                         }
                     ]
                 )
@@ -726,7 +721,6 @@ class EventAnalysis:
                             "param_name": "Precipitación acumulada en una hora (estimación uniforme)",
                             "param_value": obs["uniform_precipitation_1h"],
                             "geocode": obs["geocode"],
-                            "polygon": obs["polygon"],
                         }
                     ]
                 )
@@ -746,7 +740,6 @@ class EventAnalysis:
                             "param_name": "Precipitación acumulada en 12 horas (estimación uniforme)",
                             "param_value": obs["uniform_precipitation_12h"],
                             "geocode": obs["geocode"],
-                            "polygon": obs["polygon"],
                         }
                     ]
                 )
@@ -766,7 +759,6 @@ class EventAnalysis:
                             "param_name": "Precipitación acumulada en una hora (estimación severa del 33% en 1 hora)",
                             "param_value": obs["severe_precipitation_1h"],
                             "geocode": obs["geocode"],
-                            "polygon": obs["polygon"],
                         }
                     ]
                 )
@@ -786,7 +778,6 @@ class EventAnalysis:
                             "param_name": "Precipitación acumulada en 12 horas (estimación severa del 85% en 12 horas)",
                             "param_value": obs["severe_precipitation_12h"],
                             "geocode": obs["geocode"],
-                            "polygon": obs["polygon"],
                         }
                     ]
                 )
@@ -806,7 +797,6 @@ class EventAnalysis:
                             "param_name": "Precipitación acumulada en una hora (estimación extrema del 50% en 1 hora)",
                             "param_value": obs["extreme_precipitation_1h"],
                             "geocode": obs["geocode"],
-                            "polygon": obs["polygon"],
                         }
                     ]
                 )
@@ -826,7 +816,6 @@ class EventAnalysis:
                             "param_name": "Precipitación acumulada en 12 horas (estimación extrema del 100% en 12 horas)",
                             "param_value": obs["extreme_precipitation_12h"],
                             "geocode": obs["geocode"],
-                            "polygon": obs["polygon"],
                         }
                     ]
                 )
@@ -846,7 +835,6 @@ class EventAnalysis:
                             "param_name": "Nieve acumulada en 24 horas",
                             "param_value": obs["snowfall_24h"],
                             "geocode": obs["geocode"],
-                            "polygon": obs["polygon"],
                         }
                     ]
                 )
@@ -866,7 +854,6 @@ class EventAnalysis:
                             "param_name": "Rachas máximas",
                             "param_value": obs["wind_speed"],
                             "geocode": obs["geocode"],
-                            "polygon": obs["polygon"],
                         }
                     ]
                 )
@@ -882,6 +869,13 @@ class EventAnalysis:
         self.__df_situations = (
             self.__df_situations.groupby(["id", "effective"])
             .apply(self.__resolve_conflict)
+            .reset_index(drop=True)
+        )
+        logging.info("Selecting single situation per effective date and param_id")
+        self.__df_situations = (
+            self.__df_situations.loc[
+                self.__df_situations.groupby(["effective", "param_id"])["severity"].idxmax()
+            ]
             .reset_index(drop=True)
         )
 
@@ -975,12 +969,6 @@ class EventAnalysis:
         self.__df_situations["severity"] = self.__df_situations["severity"].map(
             constants.mapping_severity_values
         )
-        self.__df_situations["param_id"] = self.__df_situations["param_id"].apply(
-            lambda x: "PR_1H" if x.startswith("PR_1H") else x
-        )
-        self.__df_situations["param_id"] = self.__df_situations["param_id"].apply(
-            lambda x: "PR_12H" if x.startswith("PR_12H") else x
-        )
         self.__df_situations["param_name"].fillna("", inplace=True)
 
         merged_df = pd.merge(
@@ -1016,113 +1004,9 @@ class EventAnalysis:
         analysis["region"] = analysis["region_y"]
         analysis["area"] = analysis["area_y"]
         analysis["province"] = analysis["province_y"]
+
         self.__df_analysis = analysis[self.__columns_analysis]
 
+
     def draw_maps(self):
-        self.__draw_predicted_maps()
-        self.__draw_observed_maps()
-
-    def __draw_predicted_maps(self):
-        colors = ["green", "yellow", "orange", "red"]
-        colors_text = ["verde", "amarillo", "naranja", "rojo"]
-
-        draw_df = pd.merge(self.__df_warnings, self.__df_geocodes, on=["geocode"])
-        draw_df["polygon"] = draw_df["polygon_y"]
-        draw_df.drop(columns=["polygon_x", "polygon_y"], inplace=True)
-
-        logging.info("Starting to generate maps for warnings...")
-        for parameter in draw_df["param_id"].unique():
-            logging.info(f"Processing parameter: {parameter}")
-            for d in draw_df[
-                        (draw_df["param_id"] == parameter)]["effective"].unique():
-                logging.info(f"Creating map for date: {d}")
-                folium_map = folium.Map(Location=[40.4168, -3.7038], zoom_start=10)
-
-                param_description = ""
-
-                for _, w in draw_df[
-                    (draw_df["param_id"] == parameter) &
-                    (draw_df["effective"] == d)
-                ].iterrows():
-                    logging.info(f"Adding polygon for geocode: {w['geocode']}, severity: {w['severity']}")
-                    param_description = w["param_name"] if len(param_description) < len(w["param_name"]) else param_description
-                    tooltip_title = f"Aviso {colors_text[w['severity']]} por {param_description}"
-                    tooltip_location = f"{w['area']} ({w['province']}, {w['region']}"
-                    tooltip_value = f"{param_description}: {w['param_value']} {constants.mapping_parameters_units[parameter]}"
-
-                    folium.Polygon(
-                        locations= [tuple(map(float, pair.split(","))) for pair in w["polygon"].split()],
-                        fill=True,
-                        color="black",
-                        weight=1,                        
-                        fill_color=colors[w["severity"]],
-                        fill_opacity=0.6,
-                        tooltip=f"<div><b>{tooltip_title.upper()}</b><br><b>Área:</b> {tooltip_location}<br>{tooltip_value}</div>"
-                    ).add_to(folium_map)
-
-                title = f"""
-                    <h3 style="font-size: 20px; text-align: center; font-family: Arial, sans-serif;">
-                        {self.__event_name} ({self.__event_start.strftime('%d/%m/%Y')} - {self.__event_end.strftime('%d/%m/%Y')})</h3>
-                        <h3>Día {d.strftime('%d/%m/%Y')}. Avisos para {param_description}.</h3>
-                    
-                """
-                folium_map.get_root().html.add_child(folium.Element(title))                
-                map_save_path = os.path.join(
-                    constants.get_path_to_dir("maps", self.__event_id), 
-                    f"predicted_warnings_{d.strftime('%Y%m%d')}_{parameter}.html"
-                )
-                folium_map.save(map_save_path)
-                logging.info(f"Map saved to {map_save_path}")
-        logging.info("Map generation completed.")
-
-    def __draw_observed_maps(self):
-        colors = ["green", "yellow", "orange", "red"]
-        colors_text = ["verde", "amarillo", "naranja", "rojo"]
-
-        draw_df = pd.merge(self.__df_situations, self.__df_geocodes, on=["geocode"])
-        draw_df["polygon"] = draw_df["polygon_y"]
-        draw_df.drop(columns=["polygon_x", "polygon_y"], inplace=True)
-
-        logging.info("Starting to generate maps for warnings...")
-        for parameter in draw_df["param_id"].unique():
-            logging.info(f"Processing parameter: {parameter}")
-            for d in draw_df[
-                        (draw_df["param_id"] == parameter)]["effective"].unique():
-                logging.info(f"Creating map for date: {d}")
-                folium_map = folium.Map(Location=[40.4168, -3.7038], zoom_start=10)
-
-                param_description = ""
-
-                for _, w in draw_df[
-                    (draw_df["param_id"] == parameter) &
-                    (draw_df["effective"] == d)
-                ].iterrows():
-                    logging.info(f"Adding polygon for geocode: {w['geocode']}, severity: {w['severity']}")
-                    param_description = w["param_name"] if len(param_description) < len(w["param_name"]) else param_description
-                    tooltip_title = f"Aviso {colors_text[w['severity']]} por {param_description}"
-                    tooltip_location = f"{w['area']} ({w['province']}, {w['region']}"
-                    tooltip_value = f"{param_description}: {w['param_value']} {constants.mapping_parameters_units[parameter]}"
-
-                    folium.Polygon(
-                        locations= [tuple(map(float, pair.split(","))) for pair in w["polygon"].split()],
-                        fill=True,
-                        color="black",
-                        weight=1,
-                        fill_color=colors[w["severity"]],
-                        fill_opacity=0.6,
-                        tooltip=f"<div><b>{tooltip_title.upper()}</b><br><b>Área:</b> {tooltip_location}<br>{tooltip_value}</div>"
-                    ).add_to(folium_map)
-
-                title = f"""
-                    <h3 style="font-size: 20px; text-align: center; font-family: Arial, sans-serif;">
-                        {self.__event_name} ({self.__event_start.strftime('%d/%m/%Y')} - {self.__event_end.strftime('%d/%m/%Y')})</h3>
-                        <h3>Día {d.strftime('%d/%m/%Y')}. Observaciones para {param_description}.</h3>
-                """
-                folium_map.get_root().html.add_child(folium.Element(title))                
-                map_save_path = os.path.join(
-                    constants.get_path_to_dir("maps", self.__event_id), 
-                    f"observed_warnings_{d.strftime('%Y%m%d')}_{parameter}.html"
-                )
-                folium_map.save(map_save_path)
-                logging.info(f"Map saved to {map_save_path}")
-        logging.info("Map generation completed.")
+        visuals.get_map(self.__event_id, self.__event_name, self.__df_analysis, self.__df_observations)

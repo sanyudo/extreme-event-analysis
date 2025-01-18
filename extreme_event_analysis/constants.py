@@ -38,6 +38,11 @@ path_to_file: Dict[str, List[str]] = {
         *path_to_dir["data"],
         f"geocode_polygons{file_extension}",
     ],
+    "snow_level": [
+        *path_to_dir["root"],
+        *path_to_dir["data"],
+        f"snow_level{file_extension}",
+    ],    
     "geolocated": [
         *path_to_dir["root"],
         *path_to_dir["data"],
@@ -88,8 +93,30 @@ mapping_parameters_id: Dict[str, str] = {
     "PR": "precipitation",
     "PR_1H": "precipitation_1h",
     "PR_12H": "precipitation_12h",
+    "PR_1H.UNIFORME": "uniform_precipitation_1h",
+    "PR_12H.UNIFORME": "uniform_precipitation_12h",    
+    "PR_1H.SEVERA": "severe_precipitation_1h",
+    "PR_12H.SEVERA": "severe_precipitation_12h",       
+    "PR_1H.EXTREMA": "extreme_precipitation_1h",
+    "PR_12H.EXTREMA": "extreme_precipitation_12h",     
     "NE": "snowfall_24h",
     "VI": "wind_speed",
+}
+
+mapping_parameters_description: Dict[str, str] = {
+    "BT": "Temperatura mínima",
+    "AT": "Temperatura máxima",
+    "PR": "Precipitación",
+    "PR_1H": "Precipitación acumulada en una hora",
+    "PR_12H": "Precipitación acumulada en 12 horas",
+    "PR_1H.UNIFORME": "Precipitación acumulada en una hora (uniforme)",
+    "PR_12H.UNIFORME": "Precipitación acumulada en 12 horas (uniforme)",    
+    "PR_1H.SEVERA": "Precipitación acumulada en una hora (estimación severa del 33%)",
+    "PR_12H.SEVERA": "Precipitación acumulada en 12 horas (estimación severa del 85%)",       
+    "PR_1H.EXTREMA": "Precipitación acumulada en una hora (estimación extrema del 50%)",
+    "PR_12H.EXTREMA": "Precipitación acumulada en 12 horas (estimación extrema del 100%)",       
+    "NE": "Nieve acumulada en 24 horas",
+    "VI": "Racha de viento máxima",
 }
 
 mapping_parameters_units: Dict[str, str] = {
@@ -98,12 +125,27 @@ mapping_parameters_units: Dict[str, str] = {
     "PR": "mm",
     "PR_1H": "mm",
     "PR_12H": "mm",
+    "PR_1H.UNIFORME": "mm",
+    "PR_12H.UNIFORME": "mm",    
+    "PR_1H.SEVERA": "mm",
+    "PR_12H.SEVERA": "mm",       
+    "PR_1H.EXTREMA": "mm",
+    "PR_12H.EXTREMA": "mm",     
     "NE": "cm",
     "VI": "km/h",
 }
 
-allowed_parameters_ids: List[str] = list(mapping_parameters_id.keys())
-allowed_parameters: List[str] = list(mapping_parameters_id.values())
+mapping_parameters = {
+    key: {
+        "id": mapping_parameters_id[key],
+        "description": mapping_parameters_description[key],
+        "units": mapping_parameters_units[key]
+    }
+    for key in mapping_parameters_id  # Iterar sobre las claves comunes
+}
+
+allowed_parameters_ids: List[str] = list(mapping_parameters.keys())
+allowed_parameters: List[str] = list(set(p["description"] for p in mapping_parameters.values()))
 
 mapping_severity_values: Dict[str, int] = {
     "verde": 0,
@@ -126,6 +168,7 @@ columns_stations: List[str] = list(mapping_stations_fields.values())
 mapping_observations_fields: Dict[str, str] = {
     "fecha": "date",
     "indicativo": "idema",
+    "altitud": "altitude",    
     "tmin": "minimum_temperature",
     "tmax": "maximum_temperature",
     "prec": "precipitation",
@@ -139,6 +182,7 @@ columns_geocodes = ["geocode", "region", "area", "province", "polygon"]
 columns_warnings: List[str] = [
     "id",
     "effective",
+    "description",
     "severity",
     "param_id",
     "param_name",
@@ -175,6 +219,7 @@ columns_thresholds: List[str] = [
 fields_cap: List[str] = [
     "id",
     "sent",
+    "description",    
     "effective",
     "expires",
     "severity",
