@@ -20,8 +20,7 @@ constants.set_path_to_root("P:\\TFM\\")
 events = common.get_events()
 
 # Iterate over each event and perform analysis
-for i, event in events.sample(4, random_state=8).iterrows():
-    print(f"Starting analysis: {event['name']} ({event['start']} - {event['end']}). ID = {event['id']}")
+for i, event in events.sample(1, random_state=42).iterrows():
     logging.info(f"Starting analysis: {event['name']} ({event['start']} - {event['end']}). ID = {event['id']}")
     analysis = EventAnalysis(event["id"], event["name"], event["start"], event["end"])
     logging.info(f"Fetching data.")
@@ -39,7 +38,6 @@ for i, event in events.sample(4, random_state=8).iterrows():
     logging.info(f"Draw maps.")
     analysis.draw_maps()    
     logging.info("Analysis completed")
-    break
 
 
 

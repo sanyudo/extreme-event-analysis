@@ -38,13 +38,20 @@ class EventAnalysis:
         "area",
         "province",
         "polygon",
+        "idema",
+        "name",
+        "latitude",
+        "longitude",
+        "altitude",
         "param_id",
         "param_name",
         "predicted_severity",
         "predicted_value",
+        "region_severity",
+        "region_value",
         "observed_severity",
         "observed_value",
-    ]    
+    ]
 
     __columns_results = [
         "date",
@@ -296,14 +303,14 @@ class EventAnalysis:
 
         logging.info("Starting analysis preparation")
         logging.info("Geolocating stations")
-        self.geolocate_observations()
+        self.__geolocate_observations()
         logging.info("Composing definitive observations data")
-        self.compose_observations()
+        self.__evaluate_observations()
         logging.info("Generating real situations")
         self.generate_situations()
         logging.info("Analysis preparation completed")
 
-    def geolocate_observations(self):
+    def __geolocate_observations(self):
         """
         Geolocates the observations by merging them with stations and geocodes datasets.
 
@@ -341,7 +348,7 @@ class EventAnalysis:
                 self.__df_observations[col] = np.nan
         self.__df_observations = self.__df_observations[self.__columns_results]
 
-    def compose_observations(self):
+    def __evaluate_observations(self):
         """
         Composes the definitive observations data for analysis.
 
@@ -860,54 +867,29 @@ class EventAnalysis:
                 self.__df_situations = pd.concat(
                     [self.__df_situations, new_row], ignore_index=True
                 )
+        self.__group_situations()
 
     def __group_situations(self):
         """
         Groups situations by id and effective date, and resolves conflicts within each group.
         """
         logging.info("Grouping situations by id and effective date")
+
+        self.__df_situations = self.__df_situations.loc[
+            self.__df_situations.groupby(["id", "effective"])["severity"].idxmax()
+        ]
+
+        def __resolve(group):
+            if (group["param_id"] == "BT").any():
+                return group.loc[group["param_value"].idxmin()]
+            else:
+                return group.loc[group["param_value"].idxmax()]
+
         self.__df_situations = (
             self.__df_situations.groupby(["id", "effective"])
-            .apply(self.__resolve_conflict)
+            .apply(__resolve)
             .reset_index(drop=True)
         )
-        logging.info("Selecting single situation per effective date and param_id")
-        self.__df_situations = (
-            self.__df_situations.loc[
-                self.__df_situations.groupby(["effective", "param_id"])["severity"].idxmax()
-            ]
-            .reset_index(drop=True)
-        )
-
-    def __resolve_conflict(group):
-        """
-        Resolves conflicts in a group of situations with the same id and effective date.
-
-        This method is used to determine the most appropriate situation when multiple
-        situations with the same id and effective date exist. It evaluates the severity
-        and, if necessary, the parameter value to select a single representative situation.
-
-        Parameters
-        ----------
-        group : pd.DataFrame
-            A DataFrame containing situations with the same id and effective date.
-
-        Returns
-        -------
-        pd.Series
-            The selected situation row based on the highest severity and parameter value.
-        """
-
-        if len(group) == 1:
-            return group.iloc[0]
-        max_severity = group["severity"].max()
-        candidates = group[group["severity"] == max_severity]
-        if len(candidates) == 1:
-            return candidates.iloc[0]
-        if candidates.iloc[0]["param_id"] == "BT":
-            return candidates.loc[candidates["param_value"].idxmin()]
-        else:
-            return candidates.loc[candidates["param_value"].idxmax()]
 
     def save_data(self):
         """
@@ -934,16 +916,20 @@ class EventAnalysis:
             constants.get_path_to_file("analysis", self.__event_id), sep="\t"
         )
 
-    def analyze_data(self):
+    def preanalyze_data(self):
         """
-        Analyzes the data.
+        Prepares the geocode and severity data for analysis.
 
-        This method merges the predictions and observations datasets, and
-        creates a new DataFrame with the results of the analysis. The analysis
-        includes the geocode, parameter id, parameter name, predicted severity,
-        predicted value, observed severity, observed value, and polygon.
+        This method converts the 'geocode' column in the geocodes, warnings, and 
+        situations DataFrames to an integer and then to a string type. It maps 
+        the severity values in the warnings and situations DataFrames using the 
+        predefined severity mapping. It also fills missing parameter names with 
+        an empty string in these DataFrames.
 
-        The analysis is saved to the 'analysis' attribute of the object.
+        Additionally, it expands the warnings DataFrame by creating new rows for 
+        specific precipitation parameters ('PR_1H' and 'PR_12H') using existing 
+        rows and appending them with unique parameter identifiers. It then removes 
+        the original 'PR_1H' and 'PR_12H' rows from the warnings DataFrame.
 
         Parameters
         ----------
@@ -953,7 +939,7 @@ class EventAnalysis:
         -------
         None
         """
-        analysis = pd.DataFrame(columns=self.__columns_analysis)
+
         self.__df_geocodes["geocode"] = self.__df_geocodes["geocode"].astype(int)
         self.__df_geocodes["geocode"] = self.__df_geocodes["geocode"].astype(str)
 
@@ -971,6 +957,59 @@ class EventAnalysis:
         )
         self.__df_situations["param_name"].fillna("", inplace=True)
 
+        precipitation_1h = self.__df_warnings[self.__df_warnings["param_id"] == "PR_1H"]
+        precipitation_12h = self.__df_warnings[
+            self.__df_warnings["param_id"] == "PR_12H"
+        ]
+
+        distinct_params = {
+            key
+            for key in constants.mapping_parameters.keys()
+            if key.startswith("PR_1H.")
+        }
+        for param in distinct_params:
+            repeating_rows = precipitation_1h.copy()
+            repeating_rows["param_id"] = param
+            self.__df_warnings = pd.concat(
+                [self.__df_warnings, repeating_rows], ignore_index=True
+            )
+
+        distinct_params = {
+            key
+            for key in constants.mapping_parameters.keys()
+            if key.startswith("PR_12H.")
+        }
+        for param in distinct_params:
+            repeating_rows = precipitation_12h.copy()
+            repeating_rows["param_id"] = param
+            self.__df_warnings = pd.concat(
+                [self.__df_warnings, repeating_rows], ignore_index=True
+            )
+
+        self.__df_warnings = self.__df_warnings[
+            self.__df_warnings["param_id"] != "PR_1H"
+        ]
+        self.__df_warnings = self.__df_warnings[
+            self.__df_warnings["param_id"] != "PR_12H"
+        ]
+
+    def analyze_data(self):
+        """
+        Analyzes the data by merging the warnings and situations dataframes and expanding
+        the resulting dataframe with data from the geocodes, stations, and observations
+        dataframes. The resulting dataframe is then saved to a file named 'analysis' in
+        the directory specified by the event ID.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+
+        self.preanalyze_data()
         merged_df = pd.merge(
             self.__df_warnings,
             self.__df_situations,
@@ -978,35 +1017,99 @@ class EventAnalysis:
             on=["geocode", "param_id", "effective"],
             suffixes=("_pre", "_obs"),
         )
-        merged_df["param_name_obs"] = merged_df["param_name_obs"].combine_first(
+
+        merged_df["param_name_obs"] = merged_df["param_id"].map(
+            constants.mapping_parameters_description
+        )
+        merged_df["param_name_pre"] = merged_df["param_id"].map(
+            constants.mapping_parameters_description
+        )
+
+        analysis = pd.DataFrame(
+            columns=[
+                "date",
+                "geocode",
+                "param_id",
+                "param_name",
+                "predicted_severity",
+                "predicted_value",
+                "region_severity",
+                "region_value",
+            ]
+        )
+        analysis["date"] = merged_df["effective"]
+        analysis["geocode"] = merged_df["geocode"]
+        analysis["param_id"] = merged_df["param_id"]
+        analysis["param_name"] = merged_df["param_name_obs"].combine_first(
             merged_df["param_name_pre"]
         )
-        for _, item in merged_df.iterrows():
-            new_row = pd.DataFrame(
-                [
-                    {
-                        "date": item["effective"],
-                        "geocode": item["geocode"],
-                        "param_id": item["param_id"],
-                        "param_name": item["param_name_obs"],
-                        "predicted_severity": item["severity_pre"],
-                        "predicted_value": item["param_value_pre"],
-                        "observed_severity": item["severity_obs"],
-                        "observed_value": item["param_value_obs"],
-                    }
-                ]
-            )
-            analysis = pd.concat([analysis, new_row], ignore_index=True)
-        analysis["predicted_severity"].fillna(0, inplace=True)
-        analysis["observed_severity"].fillna(0, inplace=True)
-        analysis = pd.merge(analysis, self.__df_geocodes, on=["geocode"])
-        analysis["polygon"] = analysis["polygon_y"]
-        analysis["region"] = analysis["region_y"]
-        analysis["area"] = analysis["area_y"]
-        analysis["province"] = analysis["province_y"]
+        analysis["predicted_severity"] = merged_df["severity_pre"]
+        analysis["predicted_value"] = merged_df["param_value_pre"]
+        analysis["region_severity"] = merged_df["severity_obs"]
+        analysis["region_value"] = merged_df["param_value_obs"]
 
+        analysis = pd.merge(
+            analysis,
+            self.__df_geocodes[["geocode", "region", "area", "province", "polygon"]],
+            how="left",
+            on=["geocode"],
+        )
+
+        analysis["geocode"] = analysis["geocode"].astype(float)
+        analysis["geocode"] = analysis["geocode"].astype(str)
+        self.__df_stations["geocode"] = self.__df_stations["geocode"].astype(str)
+        analysis = analysis.merge(
+            self.__df_stations[
+                ["geocode", "idema", "name", "latitude", "longitude", "altitude"]
+            ],
+            how="left",
+            on="geocode",
+        )
+
+        analysis = analysis.merge(
+            self.__df_observations[
+                [
+                    "date",
+                    "idema",
+                    "minimum_temperature",
+                    "minimum_temperature_severity",
+                    "maximum_temperature",
+                    "maximum_temperature_severity",
+                    "uniform_precipitation_1h",
+                    "uniform_precipitation_1h_severity",
+                    "uniform_precipitation_12h",
+                    "uniform_precipitation_12h_severity",
+                    "severe_precipitation_1h",
+                    "severe_precipitation_1h_severity",
+                    "severe_precipitation_12h",
+                    "severe_precipitation_12h_severity",
+                    "extreme_precipitation_1h",
+                    "extreme_precipitation_1h_severity",
+                    "extreme_precipitation_12h",
+                    "extreme_precipitation_12h_severity",
+                    "snowfall_24h",
+                    "snowfall_24h_severity",
+                    "wind_speed",
+                    "wind_speed_severity",
+                ]
+            ],
+            how="left",
+            on=["date", "idema"],
+        )
+
+        for k in analysis["param_id"].unique():
+            analysis.loc[analysis["param_id"] == k, "observed_value"] = analysis[analysis["param_id"] == k][constants.mapping_parameters[k]["id"]]
+            analysis.loc[analysis["param_id"] == k, "observed_severity"] = analysis[analysis["param_id"] == k][constants.mapping_parameters[k]["id"]+"_severity"]
+            analysis[constants.mapping_parameters[k]["id"]+"_severity"].fillna(0, inplace=True)
+
+        analysis["region_severity"].fillna(0, inplace=True)
+        analysis["predicted_severity"].fillna(0, inplace=True)
+        analysis.dropna(subset=["observed_value"], inplace=True)
         self.__df_analysis = analysis[self.__columns_analysis]
 
-
     def draw_maps(self):
-        visuals.get_map(self.__event_id, self.__event_name, self.__df_analysis, self.__df_observations)
+        visuals.get_map(
+            self.__event_id,
+            self.__event_name,
+            self.__df_analysis
+        )

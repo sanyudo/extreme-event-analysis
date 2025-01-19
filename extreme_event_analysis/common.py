@@ -888,7 +888,7 @@ def prepare_observations(
         lambda row: estimate_snowfall(row["precipitation"], row["minimum_temperature"], row["maximum_temperature"], row["altitude"]),
         axis=1,
     )
-    observations["wind_speed"] = observations["wind_speed"] * 3.6
+    observations["wind_speed"] =  np.round(observations["wind_speed"] * 3.6, 1)
 
     logging.info("Observational data preparation complete.")
     return observations

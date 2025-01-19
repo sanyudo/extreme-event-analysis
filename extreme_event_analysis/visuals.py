@@ -34,7 +34,7 @@ ICONS = {
 MAP_CENTER = [40.42, -3.70]
 MAP_TILES = "CartoDB Positron"
 
-def get_map(event_id:str, event_name:str, analysis: pd.DataFrame, observations: pd.DataFrame):
+def get_map(event_id:str, event_name:str, analysis: pd.DataFrame):
 
     analysis["geometry"] = analysis["polygon"].apply(
         lambda coordinates: 
@@ -43,7 +43,7 @@ def get_map(event_id:str, event_name:str, analysis: pd.DataFrame, observations: 
 
     for d in analysis["date"].unique():
         for p in analysis[analysis["date"] == d]["param_id"].unique():
-            subset = analysis[(analysis["date"] == d) & (analysis["param_id"] == p)]    
+            subset = analysis[(analysis["date"] == d) & (analysis["param_id"] == p)]
 
             geo_map = folium.Map(location=MAP_CENTER, zoom_start=6, tiles=folium.TileLayer(
                 tiles="CartoDB Positron",
@@ -62,11 +62,19 @@ def get_map(event_id:str, event_name:str, analysis: pd.DataFrame, observations: 
                 name="OpenStreetMap"
             ).add_to(geo_map)
 
+            layer_warnings = folium.FeatureGroup(name=f"Avisos | {d.strftime('%d/%m/%Y')} | {constants.mapping_parameters[p]['description']}", show=True)
+            layer_results = folium.FeatureGroup(name=f"Situación | {d.strftime('%d/%m/%Y')} | {constants.mapping_parameters[p]['description']}", show=False)
+            layer_stations = folium.FeatureGroup(name=f"Estaciones | {d.strftime('%d/%m/%Y')} | {constants.mapping_parameters[p]['description']}", show=False)
 
+            for _, obs in subset.iterrows():
+                folium.Marker(
+                    location=[obs["latitude"], obs["longitude"]],
+                    icon=folium.Icon(color="lightgray", icon="circle", icon_color=TEXT_COLORS[int(obs['observed_severity'])], prefix="fa", opacity=1),
+                    weight=1,
+                    tooltip=f"<b>Datos observados</b><br>{obs['idema']}: {obs['name']} ({obs['province']})<br><b>{constants.mapping_parameters[p]['description']}</b>: {float(obs['observed_value'])} {constants.mapping_parameters[p]['units']} ({obs['date'].strftime('%d/%m/%Y')})"
+                ).add_to(layer_stations)
 
-            layer_warnings = folium.FeatureGroup(name=f"Avisos día {d.strftime('%d/%m/%Y')}; {constants.mapping_parameters[p]['description']}", show=True)
-            layer_results = folium.FeatureGroup(name=f"Situación día {d.strftime('%d/%m/%Y')}; {constants.mapping_parameters[p]['description']}", show=False)
-            layer_stations = folium.FeatureGroup(name=f"Observaciones día {d.strftime('%d/%m/%Y')}; {constants.mapping_parameters[p]['description']}", show=False)
+            subset = subset.groupby(["date", "param_id", "geocode"], as_index=False).first()
 
             for _, row in subset.iterrows():
                 folium.Polygon(
@@ -90,22 +98,6 @@ def get_map(event_id:str, event_name:str, analysis: pd.DataFrame, observations: 
 
             layer_warnings.add_to(geo_map)
             layer_results.add_to(geo_map)
-
-            p_value_colum = constants.mapping_parameters[p]["id"]
-            p_severity_colum = constants.mapping_parameters[p]["id"] + "_severity"
-
-            if p_value_colum in observations.columns:
-                related_observations = observations[(observations["date"] == d)]
-                related_observations = related_observations[(related_observations["geocode"].isin(subset["geocode"])) | (related_observations[p_severity_colum] > 0)]
-            
-                for _, obs in related_observations.iterrows():
-                    folium.Marker(
-                        location=[obs["latitude"], obs["longitude"]],
-                        icon=folium.Icon(color="lightgray", icon="circle", icon_color=TEXT_COLORS[int(obs[p_severity_colum])], prefix="fa", opacity=1),
-                        weight=1,
-                        tooltip=f"Observación para {obs['idema']}: {obs['name']} ({obs['province']})<br><b>{constants.mapping_parameters[p]['description']}</b>: {float(obs[p_value_colum])} {constants.mapping_parameters[p]['units']} ({obs['date'].strftime('%d/%m/%Y')})"
-                    ).add_to(layer_stations)
-
             layer_stations.add_to(geo_map)
            
             folium.LayerControl().add_to(geo_map)
