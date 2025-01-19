@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 from shapely import Point, Polygon
+import visuals
 import constants
 
 __SEVERE_PRECIPITATION_BY_TIMEFRAME = {1: 0.33, 12: 0.85}
@@ -129,6 +130,9 @@ def dms_coordinates_to_degress(dms_coordinate: str, hemisphere: str) -> float:
     """
     logging.debug(f"Converting DMS coordinate: {dms_coordinate} {hemisphere}")
     dms_value = dms_coordinate.replace(hemisphere, "")
+    if not hemisphere.isalpha() or len(hemisphere) != 1:
+        logging.error(f"Hemisphere {hemisphere} should be a single letter, one of 'N', 'S', 'E', or 'W'")
+        return float(dms_coordinate)
     logging.debug(f"Stripped DMS value: {dms_value}")
     degrees = int(dms_value[:2])
     minutes = int(dms_value[2:4])
@@ -488,7 +492,7 @@ def get_warnings(event: str) -> pd.DataFrame:
     """
 
     return prepare_warnings(
-        pd.read_csv(constants.get_path_to_file("warnings", event=event), sep="\t")
+        pd.read_csv(constants.get_path_to_file("warnings", event=event), sep="\t", dtype=str)
     )
 
 
@@ -635,7 +639,7 @@ def get_events() -> pd.DataFrame:
     `constants.path_to_dir["data"][0] + "/" + constants.path_to_dir["events"][0]`
     """
 
-    return prepare_events(pd.read_csv(constants.get_path_to_file("events"), sep="\t"))
+    return prepare_events(pd.read_csv(constants.get_path_to_file("events"), sep="\t", dtype=str))
 
 
 def prepare_events(events: pd.DataFrame) -> pd.DataFrame:
@@ -708,7 +712,7 @@ def get_thresholds() -> pd.DataFrame:
     """
 
     return prepare_thresholds(
-        pd.read_csv(constants.get_path_to_file("thresholds"), sep="\t")
+        pd.read_csv(constants.get_path_to_file("thresholds"), sep="\t", dtype=str)
     )
 
 
@@ -758,7 +762,7 @@ def get_geocodes() -> pd.DataFrame:
         A DataFrame containing geocode data with columns as specified in the file.
     """
 
-    return pd.read_csv(constants.get_path_to_file("geocodes"), sep="\t")
+    return pd.read_csv(constants.get_path_to_file("geocodes"), sep="\t", dtype=str)
 
 
 def exist_observations(event: str) -> bool:
@@ -799,7 +803,7 @@ def get_observations(event: str, stations: list) -> pd.DataFrame:
     return prepare_observations(
         observations=(
             pd.read_csv(
-                constants.get_path_to_file("observations", event=event), sep="\t"
+                constants.get_path_to_file("observations", event=event), sep="\t", dtype=str
             )
         ),
         stations=stations,
@@ -880,12 +884,15 @@ def prepare_observations(
     observations["uniform_precipitation_12h"] = np.round(
         observations["precipitation"] * 12 / 24, 1
     )
+    observations["severe_precipitation_12h"] = np.round(
+        observations["precipitation"] * float(__SEVERE_PRECIPITATION_BY_TIMEFRAME[12]), 1
+    )    
     observations["extreme_precipitation_12h"] = np.round(
         observations["precipitation"] * float(__EXTREME_PRECIPITATION_BY_TIMEFRAME[12]),
         1,
     )
     observations["snowfall_24h"] = observations.apply(
-        lambda row: estimate_snowfall(row["precipitation"], row["minimum_temperature"], row["maximum_temperature"], row["altitude"]),
+        lambda row: estimate_snowfall(float(row["precipitation"]), float(row["minimum_temperature"]), float(row["maximum_temperature"]), float(row["altitude"])),
         axis=1,
     )
     observations["wind_speed"] =  np.round(observations["wind_speed"] * 3.6, 1)
@@ -939,10 +946,6 @@ def estimate_snowfall(precipitation: float, minimum_temperature: float, maximum_
             return int(np.round(precipitation * snow_liquid_rate, 0))
     return 0
 
-    
-
-
-
 def geolocate_stations() -> pd.DataFrame:
     """
     Geolocate weather stations by assigning geocodes based on their latitude and longitude.
@@ -973,16 +976,32 @@ def geolocate_stations() -> pd.DataFrame:
             (
                 a["geocode"]
                 for _, a in geocodes.iterrows()
-                if a["geometry"].contains(station["point"])
+                if Polygon(a["geometry"]).contains(Point(station["point"]))
             ),
             None,
         ),
         axis=1,
     )
 
-    stations.drop(columns=["point"], inplace=True)
+    geocodes["centroid"] = geocodes["geometry"].apply(lambda x: x.centroid if x else None)
+    for _, stat in stations.iterrows():
+        if stat["geocode"] is None:
+            subset = geocodes[geocodes["province"] == stat["province"]]
+            if subset.empty:
+                subset = geocodes[geocodes["region"] == stat["province"]]
+            if subset.empty:
+                subset = geocodes.copy()
+            subset["distance"] = subset["centroid"].apply(
+                lambda x: x.distance(Point(stat["point"]))
+            )
+            stat["geocode"] = subset.sort_values("distance").iloc[0]["geocode"]
 
+    stations.drop(columns=["point"], inplace=True)
     stations.to_csv(constants.get_path_to_file("geolocated"), sep="\t")
+
+    visuals.get_network(get_geocodes(), get_stations())
+
+
 
 
 def exist_gelocated_stations() -> bool:
@@ -1005,7 +1024,7 @@ def get_geolocated_stations() -> pd.DataFrame:
 
     try:
         return prepare_geolocated_stations(
-            pd.read_csv(constants.get_path_to_file("geolocated"), sep="\t")
+            pd.read_csv(constants.get_path_to_file("geolocated"), sep="\t", dtype=str)
         )
     except Exception as e:
         logging.error(f"Error retrieving geolocated data: {e}")

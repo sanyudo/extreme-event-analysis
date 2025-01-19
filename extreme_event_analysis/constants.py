@@ -66,22 +66,22 @@ path_to_file: Dict[str, List[str]] = {
     "analysis": [
         *path_to_dir["root"],
         *path_to_dir["analysis"],
-        f"analysis{file_extension}",
+        f"Analysis{file_extension}",
     ],
     "results": [
         *path_to_dir["root"],
         *path_to_dir["analysis"],
-        f"observed_data{file_extension}",
+        f"Observed_Data{file_extension}",
     ],
-    "situations": [
+    "region": [
         *path_to_dir["root"],
         *path_to_dir["analysis"],
-        f"observed_situation{file_extension}",
-    ],
+        f"Region_Observed{file_extension}",
+    ],    
     "predictions": [
         *path_to_dir["root"],
         *path_to_dir["analysis"],
-        f"predicted_warnings{file_extension}",
+        f"Predicted_Warnings{file_extension}",
     ],
 }
 
@@ -153,6 +153,8 @@ mapping_severity_values: Dict[str, int] = {
     "naranja": 2,
     "rojo": 3,
 }
+
+mapping_severity_text: list[str] = ["verde", "amarillo", "naranja", "rojo"]
 
 mapping_stations_fields: Dict[str, str] = {
     "indicativo": "idema",

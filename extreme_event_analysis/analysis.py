@@ -86,7 +86,7 @@ class EventAnalysis:
 
     __df_observations = pd.DataFrame(columns=constants.columns_observations)
     __df_warnings = pd.DataFrame(columns=constants.columns_warnings)
-    __df_situations = pd.DataFrame(columns=constants.columns_warnings)
+    __df_extended_warnings = pd.DataFrame(columns=constants.columns_warnings)
     __df_stations = pd.DataFrame(columns=constants.columns_stations)
     __df_thresholds = pd.DataFrame(columns=constants.columns_thresholds)
     __df_geocodes = pd.DataFrame(columns=constants.columns_geocodes)
@@ -220,6 +220,7 @@ class EventAnalysis:
         if not common.exist_gelocated_stations():
             logging.info(f"... file not found.")
             common.geolocate_stations()
+            logging.info(f"... stations updated.")
 
     def load_data(self):
         """
@@ -239,16 +240,20 @@ class EventAnalysis:
         """
 
         logging.info(f"Loading stations inventory ...")
-        self.__df_stations = common.get_geolocated_stations()
+        stations = common.get_geolocated_stations()
+        self.__df_stations = stations
 
         logging.info(f"Loading thresholds list ...")
-        self.__df_thresholds = common.get_thresholds()
+        thresholds = common.get_thresholds()
+        self.__df_thresholds = thresholds
 
         logging.info(f"Loading thresholds list ...")
-        self.__df_geocodes = common.get_geocodes()
+        geocodes = common.get_geocodes()
+        self.__df_geocodes = geocodes
 
         logging.info(f"Loading warnings data ...")
-        self.__df_warnings = common.get_warnings(event=self.__event_id)
+        warnings = common.get_warnings(event=self.__event_id)
+        self.__df_warnings = warnings
 
         common.clean_files(event=self.__event_id)
 
@@ -280,9 +285,10 @@ class EventAnalysis:
             )
 
         logging.info(f"Loading observations data ...")
-        self.__df_observations = common.get_observations(
+        observations = common.get_observations(
             event=self.__event_id, stations=self.__df_stations["idema"].tolist()
         )
+        self.__df_observations = observations
 
     def prepare_analysis(self):
         """
@@ -303,20 +309,30 @@ class EventAnalysis:
 
         logging.info("Starting analysis preparation")
         logging.info("Geolocating stations")
-        self.__geolocate_observations()
+        self.__geolocate_observations_data()
         logging.info("Composing definitive observations data")
-        self.__evaluate_observations()
-        logging.info("Generating real situations")
-        self.generate_situations()
+        self.__evaluate_observations_severity()
+        logging.info("Extending warning data with estimation ids")
+        self.__extend_warnings_parameters()
+        logging.info("Combine warnings and observations")
+        self.__discretize_observations_warnings()
+        logging.info("Complete analysis data")
+        self.__complete_analysis_data()           
+        logging.info("Summarize observations by region")
+        self.__summarize_observations_analysis()    
         logging.info("Analysis preparation completed")
 
-    def __geolocate_observations(self):
+    def __geolocate_observations_data(self):
         """
-        Geolocates the observations by merging them with stations and geocodes datasets.
+        Geolocates the observations by merging with station and geocode data.
 
-        This method merges the observations dataset with the stations and geocodes
-        datasets. It then reorders the columns of the observations dataset to match
-        the columns of the results dataset and initializes missing columns to NaN.
+        This method prepares the observations DataFrame for analysis by merging it
+        with the stations DataFrame on the 'idema' column and with the geocodes
+        DataFrame on the 'geocode' column. After merging, it ensures that all
+        necessary columns are present in the observations by initializing any
+        missing columns to NaN. The resulting DataFrame is then stored in
+        self.__df_observations with columns reordered according to
+        self.__columns_results.
 
         Parameters
         ----------
@@ -326,17 +342,18 @@ class EventAnalysis:
         -------
         None
         """
+
         logging.info("Preparing observations for comparison")
 
-        self.__df_observations = pd.merge(
+        merged_observations = pd.merge(
             self.__df_observations,
             self.__df_stations,
             on="idema",
             suffixes=("", "stations_"),
         )
 
-        self.__df_observations = pd.merge(
-            self.__df_observations,
+        merged_observations = pd.merge(
+            merged_observations,
             self.__df_geocodes,
             on="geocode",
             suffixes=("", "geocode_"),
@@ -344,11 +361,11 @@ class EventAnalysis:
 
         logging.info("Reordering and initializing missing columns in observations")
         for col in self.__columns_results:
-            if col not in self.__df_observations.columns:
-                self.__df_observations[col] = np.nan
-        self.__df_observations = self.__df_observations[self.__columns_results]
+            if col not in merged_observations.columns:
+                merged_observations[col] = np.nan
+        self.__df_observations = merged_observations[self.__columns_results]
 
-    def __evaluate_observations(self):
+    def __evaluate_observations_severity(self):
         """
         Composes the definitive observations data for analysis.
 
@@ -373,247 +390,228 @@ class EventAnalysis:
 
         logging.info("Preparing observed data for comparison")
         logging.info("Converting geocodes")
-        self.__df_observations["geocode"] = self.__df_observations["geocode"].astype(
-            int
-        )
-        self.__df_observations["geocode"] = self.__df_observations["geocode"].astype(
-            str
-        )
-        self.__df_thresholds["geocode"] = self.__df_thresholds["geocode"].astype(int)
-        self.__df_thresholds["geocode"] = self.__df_thresholds["geocode"].astype(str)
-        self.__df_observations["date"] = pd.to_datetime(self.__df_observations["date"])
+        observations = self.__df_observations.copy()
+        observations["geocode"] = observations["geocode"].astype(str)
+
+        thresholds = self.__df_thresholds.copy()
+        thresholds["geocode"] = thresholds["geocode"].astype(str)
+        observations["date"] = pd.to_datetime(observations["date"])
 
         logging.info("Merging observed data with thresholds data")
-        self.__df_observations = pd.merge(
-            self.__df_observations,
-            self.__df_thresholds,
+        observations = pd.merge(
+            observations,
+            thresholds,
             on="geocode",
             suffixes=("", "thresholds_"),
         )
 
         logging.info("Dropping threshold columns from observations")
-        self.__df_observations = self.__df_observations.loc[
-            :, ~self.__df_observations.columns.str.startswith("thresholds_")
+        observations = observations.loc[
+            :, ~observations.columns.str.startswith("thresholds_")
         ]
 
         logging.info("Calculating minimum temperature severity")
-        self.__df_observations["minimum_temperature_severity"] = (
-            self.__df_observations.apply(
-                lambda row: (
-                    1
+        observations["minimum_temperature_severity"] = observations.apply(
+            lambda row: (
+                1
+                if row["minimum_temperature"]
+                <= row["minimum_temperature_yellow_warning"]
+                and row["minimum_temperature"]
+                > row["minimum_temperature_orange_warning"]
+                else (
+                    2
                     if row["minimum_temperature"]
-                    <= row["minimum_temperature_yellow_warning"]
+                    <= row["minimum_temperature_orange_warning"]
                     and row["minimum_temperature"]
-                    > row["minimum_temperature_orange_warning"]
+                    > row["minimum_temperature_red_warning"]
                     else (
-                        2
+                        3
                         if row["minimum_temperature"]
-                        <= row["minimum_temperature_orange_warning"]
-                        and row["minimum_temperature"]
-                        > row["minimum_temperature_red_warning"]
-                        else (
-                            3
-                            if row["minimum_temperature"]
-                            <= row["minimum_temperature_red_warning"]
-                            else 0
-                        )
+                        <= row["minimum_temperature_red_warning"]
+                        else 0
                     )
-                ),
-                axis=1,
-            )
+                )
+            ),
+            axis=1,
         )
 
         logging.info("Calculating maximum temperature severity")
-        self.__df_observations["maximum_temperature_severity"] = (
-            self.__df_observations.apply(
-                lambda row: (
-                    1
+        observations["maximum_temperature_severity"] = observations.apply(
+            lambda row: (
+                1
+                if row["maximum_temperature"]
+                >= row["maximum_temperature_yellow_warning"]
+                and row["maximum_temperature"]
+                < row["maximum_temperature_orange_warning"]
+                else (
+                    2
                     if row["maximum_temperature"]
-                    >= row["maximum_temperature_yellow_warning"]
+                    >= row["maximum_temperature_orange_warning"]
                     and row["maximum_temperature"]
-                    < row["maximum_temperature_orange_warning"]
+                    < row["maximum_temperature_red_warning"]
                     else (
-                        2
+                        3
                         if row["maximum_temperature"]
-                        >= row["maximum_temperature_orange_warning"]
-                        and row["maximum_temperature"]
-                        < row["maximum_temperature_red_warning"]
-                        else (
-                            3
-                            if row["maximum_temperature"]
-                            >= row["maximum_temperature_red_warning"]
-                            else 0
-                        )
+                        >= row["maximum_temperature_red_warning"]
+                        else 0
                     )
-                ),
-                axis=1,
-            )
+                )
+            ),
+            axis=1,
         )
 
         logging.info("Calculating uniform precipitation 1h severity")
-        self.__df_observations["uniform_precipitation_1h_severity"] = (
-            self.__df_observations.apply(
-                lambda row: (
-                    1
+        observations["uniform_precipitation_1h_severity"] = observations.apply(
+            lambda row: (
+                1
+                if row["uniform_precipitation_1h"]
+                >= row["precipitation_1h_yellow_warning"]
+                and row["uniform_precipitation_1h"]
+                < row["precipitation_1h_orange_warning"]
+                else (
+                    2
                     if row["uniform_precipitation_1h"]
-                    >= row["precipitation_1h_yellow_warning"]
+                    >= row["precipitation_1h_orange_warning"]
                     and row["uniform_precipitation_1h"]
-                    < row["precipitation_1h_orange_warning"]
+                    < row["precipitation_1h_red_warning"]
                     else (
-                        2
+                        3
                         if row["uniform_precipitation_1h"]
-                        >= row["precipitation_1h_orange_warning"]
-                        and row["uniform_precipitation_1h"]
-                        < row["precipitation_1h_red_warning"]
-                        else (
-                            3
-                            if row["uniform_precipitation_1h"]
-                            >= row["precipitation_1h_red_warning"]
-                            else 0
-                        )
+                        >= row["precipitation_1h_red_warning"]
+                        else 0
                     )
-                ),
-                axis=1,
-            )
+                )
+            ),
+            axis=1,
         )
 
         logging.info("Calculating severe precipitation 1h severity")
-        self.__df_observations["severe_precipitation_1h_severity"] = (
-            self.__df_observations.apply(
-                lambda row: (
-                    1
+        observations["severe_precipitation_1h_severity"] = observations.apply(
+            lambda row: (
+                1
+                if row["severe_precipitation_1h"]
+                >= row["precipitation_1h_yellow_warning"]
+                and row["severe_precipitation_1h"]
+                < row["precipitation_1h_orange_warning"]
+                else (
+                    2
                     if row["severe_precipitation_1h"]
-                    >= row["precipitation_1h_yellow_warning"]
+                    >= row["precipitation_1h_orange_warning"]
                     and row["severe_precipitation_1h"]
-                    < row["precipitation_1h_orange_warning"]
+                    < row["precipitation_1h_red_warning"]
                     else (
-                        2
+                        3
                         if row["severe_precipitation_1h"]
-                        >= row["precipitation_1h_orange_warning"]
-                        and row["severe_precipitation_1h"]
-                        < row["precipitation_1h_red_warning"]
-                        else (
-                            3
-                            if row["severe_precipitation_1h"]
-                            >= row["precipitation_1h_red_warning"]
-                            else 0
-                        )
+                        >= row["precipitation_1h_red_warning"]
+                        else 0
                     )
-                ),
-                axis=1,
-            )
+                )
+            ),
+            axis=1,
         )
 
         logging.info("Calculating extreme precipitation 1h severity")
-        self.__df_observations["extreme_precipitation_1h_severity"] = (
-            self.__df_observations.apply(
-                lambda row: (
-                    1
+        observations["extreme_precipitation_1h_severity"] = observations.apply(
+            lambda row: (
+                1
+                if row["extreme_precipitation_1h"]
+                >= row["precipitation_1h_yellow_warning"]
+                and row["extreme_precipitation_1h"]
+                < row["precipitation_1h_orange_warning"]
+                else (
+                    2
                     if row["extreme_precipitation_1h"]
-                    >= row["precipitation_1h_yellow_warning"]
+                    >= row["precipitation_1h_orange_warning"]
                     and row["extreme_precipitation_1h"]
-                    < row["precipitation_1h_orange_warning"]
+                    < row["precipitation_1h_red_warning"]
                     else (
-                        2
+                        3
                         if row["extreme_precipitation_1h"]
-                        >= row["precipitation_1h_orange_warning"]
-                        and row["extreme_precipitation_1h"]
-                        < row["precipitation_1h_red_warning"]
-                        else (
-                            3
-                            if row["extreme_precipitation_1h"]
-                            >= row["precipitation_1h_red_warning"]
-                            else 0
-                        )
+                        >= row["precipitation_1h_red_warning"]
+                        else 0
                     )
-                ),
-                axis=1,
-            )
+                )
+            ),
+            axis=1,
         )
 
         logging.info("Calculating uniform precipitation 12h severity")
-        self.__df_observations["uniform_precipitation_12h_severity"] = (
-            self.__df_observations.apply(
-                lambda row: (
-                    1
+        observations["uniform_precipitation_12h_severity"] = observations.apply(
+            lambda row: (
+                1
+                if row["uniform_precipitation_12h"]
+                >= row["precipitation_12h_yellow_warning"]
+                and row["uniform_precipitation_12h"]
+                < row["precipitation_12h_orange_warning"]
+                else (
+                    2
                     if row["uniform_precipitation_12h"]
-                    >= row["precipitation_12h_yellow_warning"]
+                    >= row["precipitation_12h_orange_warning"]
                     and row["uniform_precipitation_12h"]
-                    < row["precipitation_12h_orange_warning"]
+                    < row["precipitation_12h_red_warning"]
                     else (
-                        2
+                        3
                         if row["uniform_precipitation_12h"]
-                        >= row["precipitation_12h_orange_warning"]
-                        and row["uniform_precipitation_12h"]
-                        < row["precipitation_12h_red_warning"]
-                        else (
-                            3
-                            if row["uniform_precipitation_12h"]
-                            >= row["precipitation_12h_red_warning"]
-                            else 0
-                        )
+                        >= row["precipitation_12h_red_warning"]
+                        else 0
                     )
-                ),
-                axis=1,
-            )
+                )
+            ),
+            axis=1,
         )
 
         logging.info("Calculating severe precipitation 12h severity")
-        self.__df_observations["severe_precipitation_12h_severity"] = (
-            self.__df_observations.apply(
-                lambda row: (
-                    1
+        observations["severe_precipitation_12h_severity"] = observations.apply(
+            lambda row: (
+                1
+                if row["severe_precipitation_12h"]
+                >= row["precipitation_12h_yellow_warning"]
+                and row["severe_precipitation_12h"]
+                < row["precipitation_12h_orange_warning"]
+                else (
+                    2
                     if row["severe_precipitation_12h"]
-                    >= row["precipitation_12h_yellow_warning"]
+                    >= row["precipitation_12h_orange_warning"]
                     and row["severe_precipitation_12h"]
-                    < row["precipitation_12h_orange_warning"]
+                    < row["precipitation_12h_red_warning"]
                     else (
-                        2
+                        3
                         if row["severe_precipitation_12h"]
-                        >= row["precipitation_12h_orange_warning"]
-                        and row["severe_precipitation_12h"]
-                        < row["precipitation_12h_red_warning"]
-                        else (
-                            3
-                            if row["severe_precipitation_12h"]
-                            >= row["precipitation_12h_red_warning"]
-                            else 0
-                        )
+                        >= row["precipitation_12h_red_warning"]
+                        else 0
                     )
-                ),
-                axis=1,
-            )
+                )
+            ),
+            axis=1,
         )
 
         logging.info("Calculating extreme precipitation 12h severity")
-        self.__df_observations["extreme_precipitation_12h_severity"] = (
-            self.__df_observations.apply(
-                lambda row: (
-                    1
+        observations["extreme_precipitation_12h_severity"] = observations.apply(
+            lambda row: (
+                1
+                if row["extreme_precipitation_12h"]
+                >= row["precipitation_12h_yellow_warning"]
+                and row["extreme_precipitation_12h"]
+                < row["precipitation_12h_orange_warning"]
+                else (
+                    2
                     if row["extreme_precipitation_12h"]
-                    >= row["precipitation_12h_yellow_warning"]
+                    >= row["precipitation_12h_orange_warning"]
                     and row["extreme_precipitation_12h"]
-                    < row["precipitation_12h_orange_warning"]
+                    < row["precipitation_12h_red_warning"]
                     else (
-                        2
+                        3
                         if row["extreme_precipitation_12h"]
-                        >= row["precipitation_12h_orange_warning"]
-                        and row["extreme_precipitation_12h"]
-                        < row["precipitation_12h_red_warning"]
-                        else (
-                            3
-                            if row["extreme_precipitation_12h"]
-                            >= row["precipitation_12h_red_warning"]
-                            else 0
-                        )
+                        >= row["precipitation_12h_red_warning"]
+                        else 0
                     )
-                ),
-                axis=1,
-            )
+                )
+            ),
+            axis=1,
         )
 
         logging.info("Calculating snowfall 24h severity")
-        self.__df_observations["snowfall_24h_severity"] = self.__df_observations.apply(
+        observations["snowfall_24h_severity"] = observations.apply(
             lambda row: (
                 1
                 if row["snowfall_24h"] >= row["snowfall_24h_yellow_warning"]
@@ -633,7 +631,7 @@ class EventAnalysis:
         )
 
         logging.info("Calculating maximum wind speed severity")
-        self.__df_observations["wind_speed_severity"] = self.__df_observations.apply(
+        observations["wind_speed_severity"] = observations.apply(
             lambda row: (
                 1
                 if row["wind_speed"] >= row["wind_speed_yellow_warning"]
@@ -648,248 +646,260 @@ class EventAnalysis:
             axis=1,
         )
 
-        self.__df_observations = self.__df_observations[self.__columns_results]
+        self.__df_observations = observations[self.__columns_results]
 
-    def generate_situations(self):
+    def __extend_warnings_parameters(self):
         """
-        Generates a DataFrame of situations based on observed weather data.
+        Extends the warnings DataFrame to include warnings for distinct parameters.
 
-        This method iterates over the observations DataFrame and creates new rows in the situations DataFrame
-        for each parameter with a severity greater than zero. It constructs an identifier for each situation
-        based on the event ID, date, geocode, and parameter ID, and assigns the effective date, severity,
-        parameter ID, parameter name, parameter value, geocode, and polygon information to each new row.
+        The original warnings DataFrame contains warnings for "PR_1H" and "PR_12H" parameters.
+        This method extends the warnings DataFrame to include warnings for distinct parameters
+        that start with "PR_1H." and "PR_12H." prefixes.
 
-        The situations DataFrame is composed of the following columns:
-        - id: A unique identifier for each situation, constructed using the event ID, date, geocode, and parameter ID.
-        - effective: The date of the observation.
-        - severity: The severity of the parameter, mapped to a string value.
-        - param_id: The identifier for the parameter being observed.
-        - param_name: The name of the parameter being observed.
-        - param_value: The value of the parameter being observed.
-        - geocode: The geographical code associated with the observation.
-        - polygon: The geographical polygon associated with the observation.
+        The method first copies the original warnings DataFrame and maps the "severity" column
+        to numeric values using the constants.mapping_severity_values dictionary.
 
-        The resulting DataFrame is stored in the self.__df_situations attribute.
+        Then, it creates DataFrames for "PR_1H" and "PR_12H" parameters and repeats the rows
+        for each distinct parameter, assigning the new parameter ID to each repeated row.
+
+        Finally, it concatenates the original warnings DataFrame with the repeated DataFrames
+        and filters out the "PR_1H" and "PR_12H" parameters from the resulting DataFrame.
+
+        The resulting DataFrame contains warnings for all distinct parameters, including the
+        original "PR_1H" and "PR_12H" parameters.
+
+        Returns
+        -------
+        None
         """
-
-        self.__df_situations = pd.DataFrame(columns=constants.columns_warnings)
-        mapping_values_to_severity = {
-            v: k for k, v in constants.mapping_severity_values.items()
-        }
-        for _, obs in self.__df_observations.iterrows():
-            if obs["minimum_temperature_severity"] > 0:
-                new_row = pd.DataFrame(
-                    [
-                        {
-                            "id": f"{self.__event_id}.{obs['date'].strftime('%Y%m%d')}000000.{obs['geocode']}BT",
-                            "effective": obs["date"],
-                            "severity": mapping_values_to_severity.get(
-                                obs["minimum_temperature_severity"]
-                            ),
-                            "param_id": "BT",
-                            "param_name": "Temperaturas mínimas",
-                            "param_value": obs["minimum_temperature"],
-                            "geocode": obs["geocode"],
-                        }
-                    ]
-                )
-                self.__df_situations = pd.concat(
-                    [self.__df_situations, new_row], ignore_index=True
-                )
-            if obs["maximum_temperature_severity"] > 0:
-                new_row = pd.DataFrame(
-                    [
-                        {
-                            "id": f"{self.__event_id}.{obs['date'].strftime('%Y%m%d')}000000.{obs['geocode']}AT",
-                            "effective": obs["date"],
-                            "severity": mapping_values_to_severity.get(
-                                obs["maximum_temperature_severity"]
-                            ),
-                            "param_id": "AT",
-                            "param_name": "Temperaturas máximas",
-                            "param_value": obs["maximum_temperature"],
-                            "geocode": obs["geocode"],
-                        }
-                    ]
-                )
-                self.__df_situations = pd.concat(
-                    [self.__df_situations, new_row], ignore_index=True
-                )
-            if obs["uniform_precipitation_1h_severity"] > 0:
-                new_row = pd.DataFrame(
-                    [
-                        {
-                            "id": f"{self.__event_id}.{obs['date'].strftime('%Y%m%d')}000000.{obs['geocode']}PR_1H.UNIFORME",
-                            "effective": obs["date"],
-                            "severity": mapping_values_to_severity.get(
-                                obs["uniform_precipitation_1h_severity"]
-                            ),
-                            "param_id": "PR_1H.UNIFORME",
-                            "param_name": "Precipitación acumulada en una hora (estimación uniforme)",
-                            "param_value": obs["uniform_precipitation_1h"],
-                            "geocode": obs["geocode"],
-                        }
-                    ]
-                )
-                self.__df_situations = pd.concat(
-                    [self.__df_situations, new_row], ignore_index=True
-                )
-            if obs["uniform_precipitation_12h_severity"] > 0:
-                new_row = pd.DataFrame(
-                    [
-                        {
-                            "id": f"{self.__event_id}.{obs['date'].strftime('%Y%m%d')}000000.{obs['geocode']}PR_12H.UNIFORME",
-                            "effective": obs["date"],
-                            "severity": mapping_values_to_severity.get(
-                                obs["uniform_precipitation_12h_severity"]
-                            ),
-                            "param_id": "PR_12H.UNIFORME",
-                            "param_name": "Precipitación acumulada en 12 horas (estimación uniforme)",
-                            "param_value": obs["uniform_precipitation_12h"],
-                            "geocode": obs["geocode"],
-                        }
-                    ]
-                )
-                self.__df_situations = pd.concat(
-                    [self.__df_situations, new_row], ignore_index=True
-                )
-            if obs["severe_precipitation_1h_severity"] > 0:
-                new_row = pd.DataFrame(
-                    [
-                        {
-                            "id": f"{self.__event_id}.{obs['date'].strftime('%Y%m%d')}000000.{obs['geocode']}PR_1H.SEVERA",
-                            "effective": obs["date"],
-                            "severity": mapping_values_to_severity.get(
-                                obs["severe_precipitation_1h_severity"]
-                            ),
-                            "param_id": "PR_1H.SEVERA",
-                            "param_name": "Precipitación acumulada en una hora (estimación severa del 33% en 1 hora)",
-                            "param_value": obs["severe_precipitation_1h"],
-                            "geocode": obs["geocode"],
-                        }
-                    ]
-                )
-                self.__df_situations = pd.concat(
-                    [self.__df_situations, new_row], ignore_index=True
-                )
-            if obs["severe_precipitation_12h_severity"] > 0:
-                new_row = pd.DataFrame(
-                    [
-                        {
-                            "id": f"{self.__event_id}.{obs['date'].strftime('%Y%m%d')}000000.{obs['geocode']}PR_12H.SEVERA",
-                            "effective": obs["date"],
-                            "severity": mapping_values_to_severity.get(
-                                obs["severe_precipitation_12h_severity"]
-                            ),
-                            "param_id": "PR_12H.SEVERA",
-                            "param_name": "Precipitación acumulada en 12 horas (estimación severa del 85% en 12 horas)",
-                            "param_value": obs["severe_precipitation_12h"],
-                            "geocode": obs["geocode"],
-                        }
-                    ]
-                )
-                self.__df_situations = pd.concat(
-                    [self.__df_situations, new_row], ignore_index=True
-                )
-            if obs["extreme_precipitation_1h_severity"] > 0:
-                new_row = pd.DataFrame(
-                    [
-                        {
-                            "id": f"{self.__event_id}.{obs['date'].strftime('%Y%m%d')}000000.{obs['geocode']}PR_1H.EXTREMA",
-                            "effective": obs["date"],
-                            "severity": mapping_values_to_severity.get(
-                                obs["extreme_precipitation_1h_severity"]
-                            ),
-                            "param_id": "PR_1H.EXTREMA",
-                            "param_name": "Precipitación acumulada en una hora (estimación extrema del 50% en 1 hora)",
-                            "param_value": obs["extreme_precipitation_1h"],
-                            "geocode": obs["geocode"],
-                        }
-                    ]
-                )
-                self.__df_situations = pd.concat(
-                    [self.__df_situations, new_row], ignore_index=True
-                )
-            if obs["extreme_precipitation_12h_severity"] > 0:
-                new_row = pd.DataFrame(
-                    [
-                        {
-                            "id": f"{self.__event_id}.{obs['date'].strftime('%Y%m%d')}000000.{obs['geocode']}PR_12H.EXTREMA",
-                            "effective": obs["date"],
-                            "severity": mapping_values_to_severity.get(
-                                obs["extreme_precipitation_12h_severity"]
-                            ),
-                            "param_id": "PR_12H.EXTREMA",
-                            "param_name": "Precipitación acumulada en 12 horas (estimación extrema del 100% en 12 horas)",
-                            "param_value": obs["extreme_precipitation_12h"],
-                            "geocode": obs["geocode"],
-                        }
-                    ]
-                )
-                self.__df_situations = pd.concat(
-                    [self.__df_situations, new_row], ignore_index=True
-                )
-            if obs["snowfall_24h_severity"] > 0:
-                new_row = pd.DataFrame(
-                    [
-                        {
-                            "id": f"{self.__event_id}.{obs['date'].strftime('%Y%m%d')}000000.{obs['geocode']}NE",
-                            "effective": obs["date"],
-                            "severity": mapping_values_to_severity.get(
-                                obs["snowfall_24h_severity"]
-                            ),
-                            "param_id": "NE",
-                            "param_name": "Nieve acumulada en 24 horas",
-                            "param_value": obs["snowfall_24h"],
-                            "geocode": obs["geocode"],
-                        }
-                    ]
-                )
-                self.__df_situations = pd.concat(
-                    [self.__df_situations, new_row], ignore_index=True
-                )
-            if obs["wind_speed_severity"] > 0:
-                new_row = pd.DataFrame(
-                    [
-                        {
-                            "id": f"{self.__event_id}.{obs['date'].strftime('%Y%m%d')}000000.{obs['geocode']}VI",
-                            "effective": obs["date"],
-                            "severity": mapping_values_to_severity.get(
-                                obs["wind_speed_severity"]
-                            ),
-                            "param_id": "VI",
-                            "param_name": "Rachas máximas",
-                            "param_value": obs["wind_speed"],
-                            "geocode": obs["geocode"],
-                        }
-                    ]
-                )
-                self.__df_situations = pd.concat(
-                    [self.__df_situations, new_row], ignore_index=True
-                )
-        self.__group_situations()
-
-    def __group_situations(self):
-        """
-        Groups situations by id and effective date, and resolves conflicts within each group.
-        """
-        logging.info("Grouping situations by id and effective date")
-
-        self.__df_situations = self.__df_situations.loc[
-            self.__df_situations.groupby(["id", "effective"])["severity"].idxmax()
-        ]
-
-        def __resolve(group):
-            if (group["param_id"] == "BT").any():
-                return group.loc[group["param_value"].idxmin()]
-            else:
-                return group.loc[group["param_value"].idxmax()]
-
-        self.__df_situations = (
-            self.__df_situations.groupby(["id", "effective"])
-            .apply(__resolve)
-            .reset_index(drop=True)
+        extended = self.__df_warnings.copy()
+        extended["geocode"] = extended["geocode"].astype(str)
+        extended["severity"] = extended["severity"].map(
+            constants.mapping_severity_values
         )
+        extended["param_name"].fillna("", inplace=True)
+
+        precipitation_1h = extended[extended["param_id"] == "PR_1H"]
+        precipitation_12h = extended[extended["param_id"] == "PR_12H"]
+
+        distinct_params = {
+            key
+            for key in constants.mapping_parameters.keys()
+            if key.startswith("PR_1H.")
+        }
+        for param in distinct_params:
+            repeating_rows = precipitation_1h.copy()
+            repeating_rows["param_id"] = param
+            extended = pd.concat([extended, repeating_rows], ignore_index=True)
+
+        distinct_params = {
+            key
+            for key in constants.mapping_parameters.keys()
+            if key.startswith("PR_12H.")
+        }
+        for param in distinct_params:
+            repeating_rows = precipitation_12h.copy()
+            repeating_rows["param_id"] = param
+            extended = pd.concat([extended, repeating_rows], ignore_index=True)
+
+        extended = extended[extended["param_id"] != "PR_1H"]
+        extended = extended[extended["param_id"] != "PR_12H"]
+
+        self.__df_extended_warnings = extended
+
+    def __discretize_observations_warnings(self):
+        """
+        Discretizes the observations DataFrame into distinct warnings.
+
+        This method takes the observations DataFrame and discretizes it into distinct
+        warnings for each parameter. The resulting DataFrame contains the date, idema,
+        name, geocode, province, latitude, longitude, altitude, parameter ID, station
+        severity, and station value for each distinct warning.
+
+        The method first creates a new DataFrame with the columns mentioned above. Then,
+        it iterates over each parameter and copies the relevant columns from the
+        observations DataFrame to the new DataFrame. The parameter ID is added to each
+        row and the columns are renamed accordingly.
+
+        Finally, the method merges the discretized DataFrame with the extended warnings
+        DataFrame and creates a new DataFrame for analysis. The analysis DataFrame
+        contains the date, geocode, region, area, province, polygon, idema, name,
+        latitude, longitude, altitude, parameter ID, parameter name, predicted severity,
+        predicted value, region severity, region value, observed severity, and observed
+        value for each distinct warning.
+
+        The resulting analysis DataFrame is stored in the self.__df_analysis attribute.
+
+        Returns
+        -------
+        None
+        """
+        discretized = pd.DataFrame(
+            columns=[
+                "date",
+                "idema",
+                "name",
+                "geocode",
+                "province",
+                "latitude",
+                "longitude",
+                "altitude",
+                "param_id",
+                "station_severity",
+                "station_value",
+            ]
+        )
+
+        for p in list(constants.mapping_parameters.keys()):
+            if p != "PR" and p != "PR_1H" and p != "PR_12H":
+                value_column = constants.mapping_parameters[p]["id"]
+                severity_column = constants.mapping_parameters[p]["id"] + "_severity"
+                new_rows = self.__df_observations[
+                    [
+                        "date",
+                        "idema",
+                        "name",
+                        "geocode",
+                        "province",
+                        "latitude",
+                        "longitude",
+                        "altitude",
+                        severity_column,
+                        value_column,
+                    ]
+                ]
+                new_rows["param_id"] = p
+                new_rows = new_rows.rename(
+                    columns={
+                        value_column: "station_value",
+                        severity_column: "station_severity",
+                    }
+                )
+                discretized = pd.concat([discretized, new_rows], ignore_index=True)
+
+        merged_df = pd.merge(
+            discretized,
+            self.__df_extended_warnings,
+            how="left",
+            left_on=["date", "geocode", "param_id"],
+            right_on=["effective", "geocode", "param_id"],
+            suffixes=("_warn", "_obs"),
+        )
+
+        analysis = pd.DataFrame(columns=self.__columns_analysis)
+        analysis["date"] =  merged_df["date"].combine_first(merged_df["effective"])
+        analysis["geocode"] = merged_df["geocode"]
+        analysis["region"] = ""
+        analysis["area"] = ""
+        analysis["province"] = merged_df["province"]
+        analysis["polygon"] = ""
+        analysis["idema"] = merged_df["idema"]
+        analysis["name"] = merged_df["name"]
+        analysis["latitude"] = merged_df["latitude"]
+        analysis["longitude"] = merged_df["longitude"]
+        analysis["altitude"] = merged_df["altitude"]
+        analysis["param_id"] = merged_df["param_id"]
+        analysis["param_name"] = ""
+        analysis["predicted_severity"] = merged_df["severity"]
+        analysis["predicted_value"]  = merged_df["param_value"]
+        analysis["region_severity"] = 0
+        analysis["region_value"] = np.nan
+        analysis["observed_severity"] = merged_df["station_severity"]
+        analysis["observed_value"] = merged_df["station_value"]
+
+        self.__df_analysis = analysis
+
+    def __complete_analysis_data(self):
+        """
+        Complete the analysis DataFrame with region, area, province and polygon data
+
+        This method merges the analysis DataFrame with the geocodes DataFrame, and
+        completes the 'region', 'area', 'province' and 'polygon' columns.
+
+        The resulting DataFrame has the same columns as the original, but with
+        the 'region', 'area', 'province' and 'polygon' columns completed.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+        merged_df = pd.merge(
+            self.__df_analysis,
+            self.__df_geocodes,
+            how="left",
+            left_on=["geocode"],
+            right_on=["geocode"]
+        )
+
+        merged_df["region"] = merged_df["region_y"].combine_first(merged_df["region_x"])
+        merged_df["area"] = merged_df["area_y"].combine_first(merged_df["area_x"])
+        merged_df["province"] = merged_df["province_y"].combine_first(merged_df["province_x"])
+        merged_df["polygon"] = merged_df["polygon_y"].combine_first(merged_df["polygon_x"])        
+        
+        self.__df_analysis = merged_df[self.__columns_analysis]
+
+    def __summarize_observations_analysis(self):
+        """
+        Summarizes the analysis DataFrame by computing the maximum severity and
+        maximum/minimum value for each parameter and geocode.
+
+        This method groups the analysis DataFrame by date, param_id and geocode,
+        and computes the maximum severity and the maximum/minimum value for each
+        parameter. The results are merged with the original DataFrame, replacing
+        the original region_severity and region_value columns.
+
+        The resulting DataFrame has the same columns as the original, but with
+        the region_severity and region_value columns replaced with the maximum
+        severity and maximum/minimum value for each parameter and geocode.
+
+        The maximum/minimum value is computed as follows:
+
+        - For parameter 'BT', the minimum value is selected.
+        - For other parameters, the maximum value is selected.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
+        situations_desc = self.__df_analysis[self.__df_analysis["param_id"] != "BT"]
+        situations_asc = self.__df_analysis[self.__df_analysis["param_id"] == "BT"]
+
+        situations_desc.sort_values(by=["observed_severity", "observed_value"], ascending=[False, False], inplace=True)
+        situations_asc.sort_values(by=["observed_severity", "observed_value"], ascending=[False, True], inplace=True)        
+        
+        situations_desc = situations_desc.groupby(["date", "param_id", "geocode"]).agg(
+            region_severity=("observed_severity", "first"),
+            region_value=("observed_value", "first")).reset_index()
+        situations_asc = situations_asc.groupby(["date", "param_id", "geocode"]).agg(
+            region_severity=("observed_severity", "first"),
+            region_value=("observed_value", "first")).reset_index()
+        
+        situations = pd.concat([situations_desc, situations_asc], ignore_index=True)
+        analysis = self.__df_analysis
+        analysis.drop(["region_severity", "region_value"], axis=1, inplace=True)
+
+        analysis = pd.merge(analysis, situations, 
+                            how="left", 
+                            on=["date", "param_id", "geocode"])
+
+        analysis["predicted_severity"].fillna(0, inplace=True)
+        analysis["region_severity"].fillna(0, inplace=True)
+        analysis["observed_severity"].fillna(0, inplace=True)
+        analysis["predicted_severity"] = analysis["predicted_severity"].astype(int)
+        analysis["region_severity"] = analysis["region_severity"].astype(int)
+        analysis["observed_severity"] = analysis["observed_severity"].astype(int)                
+
+        analysis["param_name"] = analysis["param_id"].map(constants.mapping_parameters_description)
+
+        self.__df_analysis = analysis
 
     def save_data(self):
         """
@@ -903,213 +913,30 @@ class EventAnalysis:
 
         The files are saved in a directory specified by the event ID.
         """
-        self.__df_observations.to_csv(
-            constants.get_path_to_file("results", self.__event_id), sep="\t"
-        )
-        self.__df_warnings.to_csv(
+        df = self.__df_analysis[["date", "geocode", "region", "area", "province",  "param_name", "predicted_severity", "predicted_value"]]
+        df["predicted_severity"] = df["predicted_severity"].map(constants.mapping_severity_values)
+        df.to_csv(
             constants.get_path_to_file("predictions", self.__event_id), sep="\t"
         )
-        self.__df_situations.to_csv(
-            constants.get_path_to_file("situations", self.__event_id), sep="\t"
+
+        df = self.__df_analysis[["date", "geocode", "region", "area", "province",  "param_name", "region_severity", "region_value"]]
+        df["region_severity"] = df["region_severity"].map(constants.mapping_severity_values)
+        df.to_csv(
+            constants.get_path_to_file("region", self.__event_id), sep="\t"
         )
+
+        df = self.__df_analysis[["date", "geocode", "region", "area", "province",  "param_name", "observed_severity", "observed_value"]]
+        df["observed_severity"] = df["observed_severity"].map(constants.mapping_severity_values)
+        df.to_csv(
+            constants.get_path_to_file("results", self.__event_id), sep="\t"
+        )
+
         self.__df_analysis.to_csv(
             constants.get_path_to_file("analysis", self.__event_id), sep="\t"
         )
 
-    def preanalyze_data(self):
-        """
-        Prepares the geocode and severity data for analysis.
-
-        This method converts the 'geocode' column in the geocodes, warnings, and 
-        situations DataFrames to an integer and then to a string type. It maps 
-        the severity values in the warnings and situations DataFrames using the 
-        predefined severity mapping. It also fills missing parameter names with 
-        an empty string in these DataFrames.
-
-        Additionally, it expands the warnings DataFrame by creating new rows for 
-        specific precipitation parameters ('PR_1H' and 'PR_12H') using existing 
-        rows and appending them with unique parameter identifiers. It then removes 
-        the original 'PR_1H' and 'PR_12H' rows from the warnings DataFrame.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
-        """
-
-        self.__df_geocodes["geocode"] = self.__df_geocodes["geocode"].astype(int)
-        self.__df_geocodes["geocode"] = self.__df_geocodes["geocode"].astype(str)
-
-        self.__df_warnings["geocode"] = self.__df_warnings["geocode"].astype(int)
-        self.__df_warnings["geocode"] = self.__df_warnings["geocode"].astype(str)
-        self.__df_warnings["severity"] = self.__df_warnings["severity"].map(
-            constants.mapping_severity_values
-        )
-        self.__df_warnings["param_name"].fillna("", inplace=True)
-
-        self.__df_situations["geocode"] = self.__df_situations["geocode"].astype(int)
-        self.__df_situations["geocode"] = self.__df_situations["geocode"].astype(str)
-        self.__df_situations["severity"] = self.__df_situations["severity"].map(
-            constants.mapping_severity_values
-        )
-        self.__df_situations["param_name"].fillna("", inplace=True)
-
-        precipitation_1h = self.__df_warnings[self.__df_warnings["param_id"] == "PR_1H"]
-        precipitation_12h = self.__df_warnings[
-            self.__df_warnings["param_id"] == "PR_12H"
-        ]
-
-        distinct_params = {
-            key
-            for key in constants.mapping_parameters.keys()
-            if key.startswith("PR_1H.")
-        }
-        for param in distinct_params:
-            repeating_rows = precipitation_1h.copy()
-            repeating_rows["param_id"] = param
-            self.__df_warnings = pd.concat(
-                [self.__df_warnings, repeating_rows], ignore_index=True
-            )
-
-        distinct_params = {
-            key
-            for key in constants.mapping_parameters.keys()
-            if key.startswith("PR_12H.")
-        }
-        for param in distinct_params:
-            repeating_rows = precipitation_12h.copy()
-            repeating_rows["param_id"] = param
-            self.__df_warnings = pd.concat(
-                [self.__df_warnings, repeating_rows], ignore_index=True
-            )
-
-        self.__df_warnings = self.__df_warnings[
-            self.__df_warnings["param_id"] != "PR_1H"
-        ]
-        self.__df_warnings = self.__df_warnings[
-            self.__df_warnings["param_id"] != "PR_12H"
-        ]
-
     def analyze_data(self):
-        """
-        Analyzes the data by merging the warnings and situations dataframes and expanding
-        the resulting dataframe with data from the geocodes, stations, and observations
-        dataframes. The resulting dataframe is then saved to a file named 'analysis' in
-        the directory specified by the event ID.
-
-        Parameters
-        ----------
-        None
-
-        Returns
-        -------
-        None
-        """
-
-        self.preanalyze_data()
-        merged_df = pd.merge(
-            self.__df_warnings,
-            self.__df_situations,
-            how="outer",
-            on=["geocode", "param_id", "effective"],
-            suffixes=("_pre", "_obs"),
-        )
-
-        merged_df["param_name_obs"] = merged_df["param_id"].map(
-            constants.mapping_parameters_description
-        )
-        merged_df["param_name_pre"] = merged_df["param_id"].map(
-            constants.mapping_parameters_description
-        )
-
-        analysis = pd.DataFrame(
-            columns=[
-                "date",
-                "geocode",
-                "param_id",
-                "param_name",
-                "predicted_severity",
-                "predicted_value",
-                "region_severity",
-                "region_value",
-            ]
-        )
-        analysis["date"] = merged_df["effective"]
-        analysis["geocode"] = merged_df["geocode"]
-        analysis["param_id"] = merged_df["param_id"]
-        analysis["param_name"] = merged_df["param_name_obs"].combine_first(
-            merged_df["param_name_pre"]
-        )
-        analysis["predicted_severity"] = merged_df["severity_pre"]
-        analysis["predicted_value"] = merged_df["param_value_pre"]
-        analysis["region_severity"] = merged_df["severity_obs"]
-        analysis["region_value"] = merged_df["param_value_obs"]
-
-        analysis = pd.merge(
-            analysis,
-            self.__df_geocodes[["geocode", "region", "area", "province", "polygon"]],
-            how="left",
-            on=["geocode"],
-        )
-
-        analysis["geocode"] = analysis["geocode"].astype(float)
-        analysis["geocode"] = analysis["geocode"].astype(str)
-        self.__df_stations["geocode"] = self.__df_stations["geocode"].astype(str)
-        analysis = analysis.merge(
-            self.__df_stations[
-                ["geocode", "idema", "name", "latitude", "longitude", "altitude"]
-            ],
-            how="left",
-            on="geocode",
-        )
-
-        analysis = analysis.merge(
-            self.__df_observations[
-                [
-                    "date",
-                    "idema",
-                    "minimum_temperature",
-                    "minimum_temperature_severity",
-                    "maximum_temperature",
-                    "maximum_temperature_severity",
-                    "uniform_precipitation_1h",
-                    "uniform_precipitation_1h_severity",
-                    "uniform_precipitation_12h",
-                    "uniform_precipitation_12h_severity",
-                    "severe_precipitation_1h",
-                    "severe_precipitation_1h_severity",
-                    "severe_precipitation_12h",
-                    "severe_precipitation_12h_severity",
-                    "extreme_precipitation_1h",
-                    "extreme_precipitation_1h_severity",
-                    "extreme_precipitation_12h",
-                    "extreme_precipitation_12h_severity",
-                    "snowfall_24h",
-                    "snowfall_24h_severity",
-                    "wind_speed",
-                    "wind_speed_severity",
-                ]
-            ],
-            how="left",
-            on=["date", "idema"],
-        )
-
-        for k in analysis["param_id"].unique():
-            analysis.loc[analysis["param_id"] == k, "observed_value"] = analysis[analysis["param_id"] == k][constants.mapping_parameters[k]["id"]]
-            analysis.loc[analysis["param_id"] == k, "observed_severity"] = analysis[analysis["param_id"] == k][constants.mapping_parameters[k]["id"]+"_severity"]
-            analysis[constants.mapping_parameters[k]["id"]+"_severity"].fillna(0, inplace=True)
-
-        analysis["region_severity"].fillna(0, inplace=True)
-        analysis["predicted_severity"].fillna(0, inplace=True)
-        analysis.dropna(subset=["observed_value"], inplace=True)
-        self.__df_analysis = analysis[self.__columns_analysis]
+        pass
 
     def draw_maps(self):
-        visuals.get_map(
-            self.__event_id,
-            self.__event_name,
-            self.__df_analysis
-        )
+        visuals.get_map(self.__event_id, self.__event_name, self.__df_analysis)
