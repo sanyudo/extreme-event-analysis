@@ -27,25 +27,19 @@ import requests
 from requests.exceptions import RequestException
 import tenacity
 
-import constants
+import event_data_commons
 
-__OPENDATA_API_KEY = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbHZhcm8uc2FudWRvQGFsdW1ub3MudWkxLmVzIiwianRpIjoiMzMzMWQ4YjgtMjc3OS00NzNmLWFjNDEtYTI0Zjg1NzczOTc4IiwiaXNzIjoiQUVNRVQiLCJpYXQiOjE3MzExNzA2NzgsInVzZXJJZCI6IjMzMzFkOGI4LTI3NzktNDczZi1hYzQxLWEyNGY4NTc3Mzk3OCIsInJvbGUiOiIifQ.bNt0gjOKShj0PAf2XZ0IUMspaaKVlmdAxy4koTY7gjo"
+#eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbHZhcm8uc2FudWRvQGFsdW1ub3MudWkxLmVzIiwianRpIjoiMzMzMWQ4YjgtMjc3OS00NzNmLWFjNDEtYTI0Zjg1NzczOTc4IiwiaXNzIjoiQUVNRVQiLCJpYXQiOjE3MzExNzA2NzgsInVzZXJJZCI6IjMzMzFkOGI4LTI3NzktNDczZi1hYzQxLWEyNGY4NTc3Mzk3OCIsInJvbGUiOiIifQ.bNt0gjOKShj0PAf2XZ0IUMspaaKVlmdAxy4koTY7gjo
 
-__OPENDATA_SERVER = "https://opendata.aemet.es/opendata"
-
-__OPENDATA_REQUEST_HEADERS = {"cache-control": "no-cache"}
-
-__OPENDATA_REQUEST_QUERYSTRING = {"api_key": f"{__OPENDATA_API_KEY}"}
-
-__OPENDATA_REQUEST_ENDPOINTS = {
+__OPENDATA_API_KEY__ = "<REDACTED_API_KEY>"  # Placeholder for security
+__OPENDATA_SERVER__ = "https://opendata.aemet.es/opendata"
+__OPENDATA_REQUEST_HEADERS__ = {"cache-control": "no-cache"}
+__OPENDATA_REQUEST_QUERYSTRING_ = {"api_key": f"{__OPENDATA_API_KEY__}"}
+__OPENDATA_REQUEST_ENDPOINTS__ = {
     "warnings": "/api/avisos_cap/archivo/fechaini/{start_date}/fechafin/{end_date}",
     "observations": "/api/valores/climatologicos/diarios/datos/fechaini/{start_date}/fechafin/{end_date}/todasestaciones",
-    # "stations": "/api/valores/climatologicos/inventarioestaciones/todasestaciones/",
-    # "geocodes": ""
 }
-
-__CAPS_TAR_FILENAME = "caps.tar"
-
+__CAPS_TAR_FILENAME__ = "caps.tar"
 
 # Retry decorator for API requests
 def retry_on_request_exception(func):
@@ -65,7 +59,7 @@ def retry_on_request_exception(func):
     )(func)
 
 
-def __build_request_url(endpoint: str) -> str:
+def __request_url__(endpoint: str) -> str:
     """Build a request URL for a given endpoint.
 
     Parameters
@@ -79,8 +73,7 @@ def __build_request_url(endpoint: str) -> str:
         The request URL.
     """
 
-    return f"{__OPENDATA_SERVER}{__OPENDATA_REQUEST_ENDPOINTS[endpoint]}?api_key={__OPENDATA_API_KEY}"
-
+    return f"{__OPENDATA_SERVER__}{__OPENDATA_REQUEST_ENDPOINTS__[endpoint]}?api_key={__OPENDATA_API_KEY__}"
 
 def set_api_key(api_key: str):
     """Set the AEMET OpenData API key.
@@ -95,12 +88,11 @@ def set_api_key(api_key: str):
     None
     """
 
-    global __OPENDATA_API_KEY
-    __OPENDATA_API_KEY = api_key
-
+    global __OPENDATA_API_KEY__
+    __OPENDATA_API_KEY__ = api_key
 
 @retry_on_request_exception
-def __request_caps(event: str, date: datetime):
+def __request_caps__(event: str, date: datetime):
     """
     Download warnings for a given event and date.
 
@@ -118,11 +110,11 @@ def __request_caps(event: str, date: datetime):
 
     try:
         response = requests.get(
-            __build_request_url("warnings").format(
+            __request_url__("warnings").format(
                 start_date=date.strftime("%Y-%m-%dT%H:%M:%SUTC"),
                 end_date=date.strftime("%Y-%m-%dT23:59:59UTC"),
             ),
-            headers=__OPENDATA_REQUEST_HEADERS,
+            headers=__OPENDATA_REQUEST_HEADERS__,
         )
         response.raise_for_status()
         download_url = response.json()["datos"]
@@ -135,9 +127,9 @@ def __request_caps(event: str, date: datetime):
 
     try:
         download_file = os.path.join(
-            constants.get_path_to_dir("warnings", event),
+            event_data_commons.get_path_to_dir("warnings", event),
             date.strftime("%Y%m%d"),
-            __CAPS_TAR_FILENAME,
+            __CAPS_TAR_FILENAME__,
         )
         with requests.get(download_url, stream=True) as response:
             response.raise_for_status()
@@ -171,19 +163,19 @@ def fetch_caps(event: str, start: datetime, end: datetime):
     for n in range(int((end - start).days) + 1):
         try:
             logging.info(f"Downloading warnings for {(start + timedelta(n)):%Y-%m-%d}.")
-            __request_caps(event, (start + timedelta(n)))
+            __request_caps__(event, (start + timedelta(n)))
         except Exception as e:
             logging.error(f"Error fetching warnings: {e}")
             raise
         try:
             logging.info(f"Extracting warnings for {(start + timedelta(n)):%Y-%m-%d}.")
-            __extract_tars(event, (start + timedelta(n)))
+            __extract_tars__(event, (start + timedelta(n)))
         except Exception as e:
             logging.error(f"Error extracting warnings: {e}")
             raise
 
 
-def __extract_tars(event: str, date: datetime):
+def __extract_tars__(event: str, date: datetime):
     """
     Extracts tar files containing warnings for a specific event and date.
 
@@ -206,9 +198,9 @@ def __extract_tars(event: str, date: datetime):
     """
 
     extraction_path = os.path.join(
-        constants.get_path_to_dir("warnings", event), date.strftime("%Y%m%d")
+        event_data_commons.get_path_to_dir("warnings", event), date.strftime("%Y%m%d")
     )
-    tar_path = os.path.join(extraction_path, __CAPS_TAR_FILENAME)
+    tar_path = os.path.join(extraction_path, __CAPS_TAR_FILENAME__)
 
     try:
         logging.info(f"Extracting warnings in {extraction_path}.")
@@ -224,13 +216,13 @@ def __extract_tars(event: str, date: datetime):
             logging.error(f"Error deleting tar: {e}")
             raise
 
-        __extract_gzips(extraction_path)
+        __extract_gzips__(extraction_path)
     except Exception as e:
         logging.error(f"Error during extraction: {e}")
         raise
 
 
-def __extract_gzips(path: str):
+def __extract_gzips__(path: str):
     """
     Decompresses gzip files in the given path.
 
@@ -264,13 +256,13 @@ def __extract_gzips(path: str):
                 logging.error(f"Error deleting gzip {gz}: {e}")
                 raise
 
-        __extract_caps(path)
+        __extract_caps__(path)
     except Exception as e:
         logging.error(f"Error during gzip decompression: {e}")
         raise
 
 
-def __extract_caps(path: str):
+def __extract_caps__(path: str):
     """
     Extracts CAP files from tar archives in the specified directory.
 
@@ -307,12 +299,12 @@ def __extract_caps(path: str):
 
 
 @retry_on_request_exception
-def __request_observations(date: datetime) -> pd.DataFrame:
+def __request_observations__(date: datetime) -> pd.DataFrame:
     """
-    Downloads observations for a given date from AEMET's OpenData service.
+    Downloads observations for a given day from AEMET's OpenData service.
 
-    This function downloads observations for a given date using the OpenData
-    service. The observations are downloaded for the given date and returned as a
+    This function downloads observations for a given day using the OpenData
+    service. The observations are downloaded and converted to a Pandas
     DataFrame.
 
     Parameters
@@ -323,21 +315,20 @@ def __request_observations(date: datetime) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        The downloaded observations as a DataFrame.
+        A Pandas DataFrame containing the downloaded observations.
 
     Raises
     ------
     Exception
-        If an error occurs during the request or JSON parsing.
+        If an error occurs during the download or JSON parsing.
     """
-
     try:
         response = requests.get(
-            __build_request_url("observations").format(
+            __request_url__("observations").format(
                 start_date=date.strftime("%Y-%m-%dT%H:%M:%SUTC"),
                 end_date=date.strftime("%Y-%m-%dT23:59:59UTC"),
             ),
-            headers=__OPENDATA_REQUEST_HEADERS,
+            headers=__OPENDATA_REQUEST_HEADERS__,
         )
         response.raise_for_status()
         data_link = response.json()["datos"]
@@ -378,15 +369,15 @@ def fetch_observations(event: str, start: datetime, end: datetime) -> None:
     dfs = []
     for n in range((end - start).days):
         logging.info(f"Fetching observations for {(start + timedelta(n)):%Y-%m-%d}.")
-        dfs.append(__request_observations(start + timedelta(n)))
+        dfs.append(__request_observations__(start + timedelta(n)))
 
     observations_df = pd.concat(dfs, ignore_index=True)
-    observations_df.rename(columns=constants.mapping_observations_fields, inplace=True)
-    observations_df = observations_df[constants.columns_observations]
+    observations_df = observations_df.rename(columns=event_data_commons.MAPPING_OBSERVATION_FIELD)
+    observations_df = observations_df[event_data_commons.FIELDS_OBSERVATION_DATA]
 
     try:
         observations_df.to_csv(
-            constants.get_path_to_file("observations", event),
+            event_data_commons.get_path_to_file("observations_list", event),
             index=False,
             sep="\t",
         )

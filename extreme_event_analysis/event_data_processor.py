@@ -1,11 +1,10 @@
 """
-This module provides a class for performing an event analysis.
+This module provides a class for performing data processing.
 
 Imports:
 - pandas as pd: For data manipulation and analysis.
 - numpy as np: For numerical computations.
-- os: For interacting with the operating system (paths, files, etc.).
-- datetime, timedelta: For working with dates and time differences.
+- datetime: For working with dates.
 - aemet_opendata_connector: For connecting to the AEMET OpenData API.
 - common_operations: For common operations and utilities.
 - constants: For accessing global constants used throughout the project.
@@ -14,24 +13,21 @@ Imports:
 
 import pandas as pd
 import numpy as np
-import os
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import aemet_opendata
-import visuals
-import common
-import constants
+import event_data_commons
 import logging
 
 
-class EventAnalysis:
-    __event_id = ""
-    __event_name = ""
-    __event_start = datetime.now()
-    __event_end = datetime.now()
+class EventDataProcessor:
+    __EVENT_ID__ = ""
+    __EVENT_NAME__ = ""
+    __EVENT_START__ = datetime.now()
+    __EVENT_END__ = datetime.now()
 
-    __columns_analysis = [
+    __FIELDS_PROCESSED_DATA__ = [
         "date",
         "geocode",
         "region",
@@ -52,8 +48,7 @@ class EventAnalysis:
         "observed_severity",
         "observed_value",
     ]
-
-    __columns_results = [
+    __FIELDS_COMBINED_RESULTS__ = [
         "date",
         "idema",
         "name",
@@ -84,19 +79,22 @@ class EventAnalysis:
         "wind_speed_severity",
     ]
 
-    __df_observations = pd.DataFrame(columns=constants.columns_observations)
-    __df_warnings = pd.DataFrame(columns=constants.columns_warnings)
-    __df_extended_warnings = pd.DataFrame(columns=constants.columns_warnings)
-    __df_stations = pd.DataFrame(columns=constants.columns_stations)
-    __df_thresholds = pd.DataFrame(columns=constants.columns_thresholds)
-    __df_geocodes = pd.DataFrame(columns=constants.columns_geocodes)
-    __df_analysis = pd.DataFrame(columns=__columns_analysis)
+    __DATAFRAME_OBSERVED_DATA__ = pd.DataFrame(columns=event_data_commons.FIELDS_OBSERVATION_DATA)
+    __DATAFRAME_WARNINGS__ = pd.DataFrame(columns=event_data_commons.FIELDS_WARNING_DATA)
+    __DATAFRAME_WARNINGS_EXTENDED__ = pd.DataFrame(columns=event_data_commons.FIELDS_WARNING_DATA)
+    __DATAFRAME_STATION_DATA = pd.DataFrame(columns=event_data_commons.FIELDS_STATION_DATA)
+    __DATAFRAME_THRESHOLD_DATA__ = pd.DataFrame(columns=event_data_commons.FIELDS_THRESHOLD_DATA)
+    __DATAFRAME_GEOCODES__ = pd.DataFrame(columns=event_data_commons.FIELDS_GEOCODE_DATA)
+    __DATAFRAME_PREPARED_DATA__ = pd.DataFrame(columns=__FIELDS_PROCESSED_DATA__)
+
+    __SEVERE_PRECIPITATION_BY_TIMEFRAME__ = {1: 0.50, 12: 0.75}
+    __EXTREME_PRECIPITATION_BY_TIMEFRAME__ = {1: 0.75, 12: 1.00}
 
     def __init__(
         self, event_id: str, event_name: str, event_start: datetime, event_end: datetime
     ):
         """
-        Initializes an instance of the EventAnalysis class.
+        Initializes an instance of the class.
 
         Parameters
         ----------
@@ -109,12 +107,27 @@ class EventAnalysis:
         event_end : datetime
             The end date and time of the event to be analyzed.
         """
-        self.__event_id = event_id
-        self.__event_name = event_name
-        self.__event_start = event_start
-        self.__event_end = event_end
+        self.__EVENT_ID__ = event_id
+        self.__EVENT_NAME__ = event_name
+        self.__EVENT_START__ = event_start
+        self.__EVENT_END__ = event_end
 
-    def get_event(self) -> str:
+    def get_event_data(self) -> pd.DataFrame:
+        """
+        Retrieves the prepared data DataFrame.
+
+        This method returns the DataFrame containing the processed data,
+        which includes information such as date, geocode, region, area,
+        province, polygon, and various parameter values and severities.
+
+        Returns
+        -------
+        pd.DataFrame
+            The DataFrame with processed event data.
+        """
+        return self.__DATAFRAME_PREPARED_DATA__
+
+    def get_event_info(self) -> str:
         """
         Returns the event identifier, name, start date and end date of the analyzed event as a dictionary.
 
@@ -124,15 +137,15 @@ class EventAnalysis:
             A dictionary containing the event identifier, name, start date and end date of the analyzed event.
         """
         return {
-            "id": self.__event_id,
-            "name": self.__event_name,
-            "start": self.__event_start,
-            "end": self.__event_end,
+            "id": self.__EVENT_ID__,
+            "name": self.__EVENT_NAME__,
+            "start": self.__EVENT_START__,
+            "end": self.__EVENT_END__,
         }
 
     def get_warnings_start(self) -> datetime:
         """
-        Returns the start date and time of the warnings for the analyzed event.
+        Returns the start date and time of the warnings.
 
         This method first filters the warnings DataFrame to only include rows with a severity greater than or equal to 1.
         If this filtered DataFrame is not empty, it then returns the minimum effective date and time of the filtered warnings.
@@ -141,22 +154,22 @@ class EventAnalysis:
         Returns
         -------
         datetime
-            The start date and time of the warnings for the analyzed event.
+            The start date and time of the warnings.
         """
 
-        warnings = self.__df_warnings.copy()
+        warnings = self.__DATAFRAME_WARNINGS__.copy()
         warnings["severity_mapped"] = warnings["severity"].map(
-            constants.mapping_severity_values
+            event_data_commons.MAPPING_SEVERITY_VALUE
         )
         filtered_warnings = warnings[warnings["severity_mapped"] >= 1]
         if not filtered_warnings.empty:
             return filtered_warnings["effective"].min()
         else:
-            return self.__event_start
+            return self.__EVENT_START__
 
     def get_warnings_end(self) -> datetime:
         """
-        Returns the end date and time of the warnings for the analyzed event.
+        Returns the end date and time of the warnings.
 
         This method first filters the warnings DataFrame to only include rows with a severity greater than or equal to 1.
         If this filtered DataFrame is not empty, it then returns the maximum effective date and time of the filtered warnings.
@@ -165,20 +178,20 @@ class EventAnalysis:
         Returns
         -------
         datetime
-            The end date and time of the warnings for the analyzed event.
+            The end date and time of the warnings.
         """
 
-        warnings = self.__df_warnings.copy()
+        warnings = self.__DATAFRAME_WARNINGS__.copy()
         warnings["severity_mapped"] = warnings["severity"].map(
-            constants.mapping_severity_values
+            event_data_commons.MAPPING_SEVERITY_VALUE
         )
         filtered_warnings = warnings[warnings["severity_mapped"] >= 1]
         if not filtered_warnings.empty:
             return filtered_warnings["effective"].max()
         else:
-            return self.__event_end
+            return self.__EVENT_END__
 
-    def fetch_warnings(self):
+    def fetch_predicted_warnings(self):
         """
         Downloads warnings data for the analyzed event.
 
@@ -200,31 +213,33 @@ class EventAnalysis:
         None
         """
 
-        common.ensure_directories(
-            event=(self.__event_id), start=(self.__event_start), end=(self.__event_end)
+        event_data_commons.ensure_directories(
+            event=(self.__EVENT_ID__),
+            start=(self.__EVENT_START__),
+            end=(self.__EVENT_END__),
         )
 
         logging.info(f"Checking for warnings file ...")
-        if not common.exist_warnings(event=(self.__event_id)):
+        if not event_data_commons.exist_warnings(event=(self.__EVENT_ID__)):
             logging.info(f"... warnings file not found. Checking for caps ...")
-            if not common.exist_caps(event=(self.__event_id)):
+            if not event_data_commons.exist_caps(event=(self.__EVENT_ID__)):
                 logging.info(f"... caps not found. Downloading")
                 aemet_opendata.fetch_caps(
-                    event=(self.__event_id),
-                    start=(self.__event_start),
-                    end=(self.__event_end),
+                    event=(self.__EVENT_ID__),
+                    start=(self.__EVENT_START__),
+                    end=(self.__EVENT_END__),
                 )
-            common.caps_to_warnings(event=(self.__event_id))
+            event_data_commons.caps_to_warnings(event=(self.__EVENT_ID__))
 
         logging.info(f"Checking for geolocated stations file ...")
-        if not common.exist_gelocated_stations():
+        if not event_data_commons.exist_gelocated_stations():
             logging.info(f"... file not found.")
-            common.geolocate_stations()
+            event_data_commons.geolocate_stations()
             logging.info(f"... stations updated.")
 
-    def load_data(self):
+    def load_raw_data(self):
         """
-        Loads the necessary data for the analysis.
+        Loads the necessary data.
 
         This method first loads the geolocated stations, thresholds and geocodes dataframes.
         It then loads the warnings dataframe for the analyzed event. Finally, it cleans up
@@ -240,24 +255,24 @@ class EventAnalysis:
         """
 
         logging.info(f"Loading stations inventory ...")
-        stations = common.get_geolocated_stations()
-        self.__df_stations = stations
+        stations = event_data_commons.get_geolocated_stations()
+        self.__DATAFRAME_STATION_DATA = stations
 
         logging.info(f"Loading thresholds list ...")
-        thresholds = common.get_thresholds()
-        self.__df_thresholds = thresholds
+        thresholds = event_data_commons.get_thresholds()
+        self.__DATAFRAME_THRESHOLD_DATA__ = thresholds
 
         logging.info(f"Loading thresholds list ...")
-        geocodes = common.get_geocodes()
-        self.__df_geocodes = geocodes
+        geocodes = event_data_commons.get_geocodes()
+        self.__DATAFRAME_GEOCODES__ = geocodes
 
         logging.info(f"Loading warnings data ...")
-        warnings = common.get_warnings(event=self.__event_id)
-        self.__df_warnings = warnings
+        warnings = event_data_commons.get_warnings(event=self.__EVENT_ID__)
+        self.__DATAFRAME_WARNINGS__ = warnings
 
-        common.clean_files(event=self.__event_id)
+        event_data_commons.clean_files(event=self.__EVENT_ID__)
 
-    def fetch_observations(self):
+    def fetch_observed_data(self):
         """
         Downloads the observations data for the analyzed event and loads it to memory.
 
@@ -276,23 +291,24 @@ class EventAnalysis:
         """
 
         logging.info(f"Checking for observations file ...")
-        if not common.exist_observations(event=(self.__event_id)):
+        if not event_data_commons.exist_observations(event=(self.__EVENT_ID__)):
             logging.info(f"... observations file not found. Downloading")
             aemet_opendata.fetch_observations(
-                event=(self.__event_id),
+                event=(self.__EVENT_ID__),
                 start=(self.get_warnings_start()),
                 end=(self.get_warnings_end()),
             )
 
         logging.info(f"Loading observations data ...")
-        observations = common.get_observations(
-            event=self.__event_id, stations=self.__df_stations["idema"].tolist()
+        observations = event_data_commons.get_observations(
+            event=self.__EVENT_ID__,
+            stations=self.__DATAFRAME_STATION_DATA["idema"].tolist(),
         )
-        self.__df_observations = observations
+        self.__DATAFRAME_OBSERVED_DATA__ = observations
 
-    def prepare_analysis(self):
+    def prepare_event_data(self):
         """
-        Prepares the data for analysis by performing several steps.
+        Prepares the data by performing several steps.
 
         This method involves geolocating the observations, composing the definitive
         observations data by merging with relevant datasets, and generating real
@@ -307,22 +323,144 @@ class EventAnalysis:
         None
         """
 
-        logging.info("Starting analysis preparation")
-        logging.info("Geolocating stations")
-        self.__geolocate_observations_data()
-        logging.info("Composing definitive observations data")
-        self.__evaluate_observations_severity()
-        logging.info("Extending warning data with estimation ids")
-        self.__extend_warnings_parameters()
-        logging.info("Combine warnings and observations")
-        self.__discretize_observations_warnings()
-        logging.info("Complete analysis data")
-        self.__complete_analysis_data()           
-        logging.info("Summarize observations by region")
-        self.__summarize_observations_analysis()    
-        logging.info("Analysis preparation completed")
+        logging.info("Starting data processing")
+        logging.info("Estimating missings...")
+        self.__estimate_missing_observations__()
+        logging.info("Geolocating observations...")
+        self.__geolocate_observed_data__()
+        logging.info("Composing observations...")
+        self.__evaluate_observed_severity__()
+        logging.info("Extending warnings...")
+        self.__extend_warning_data__()
+        logging.info("Combining data...")
+        self.__discretize_observed_data__()
+        logging.info("Completing data...")
+        self.__complete_empty_fields__()
+        logging.info("Summarizing observations...")
+        self.__summarize_observed_data__()
+        logging.info("Preparation completed")
 
-    def __geolocate_observations_data(self):
+    def __estimate_snowfall_value__(
+        self,
+        precipitation: float,
+        minimum_temperature: float,
+        maximum_temperature: float,
+        altitude: float,
+    ) -> int:
+        """
+        Estimates snowfall given precipitation, minimum and maximum temperatures, and altitude.
+
+        Parameters
+        ----------
+        precipitation : float
+            The precipitation value.
+        minimum_temperature : float
+            The minimum temperature value.
+        maximum_temperature : float
+            The maximum temperature value.
+        altitude : float
+            The altitude value.
+
+        Returns
+        -------
+        int
+            The estimated snowfall value in centimeters.
+        """
+        snow_level = event_data_commons.get_snow_level()
+        if not snow_level.index.name == "t":
+            snow_level = snow_level.set_index("t")
+
+        if precipitation > 0:
+            lapse_rate = 6.5
+            t_5500hpa = maximum_temperature + lapse_rate * (altitude - 5500) / 1000
+            t_850hpa = int(
+                max(
+                    -10,
+                    min(
+                        10,
+                        np.round(
+                            minimum_temperature - (1500 - altitude) / 1000 * 6.5, 0
+                        ),
+                    ),
+                )
+            )
+
+            if t_5500hpa > -20:
+                return 0
+            else:
+                t_5500hpa = min(
+                    [-40, -35, -30, -25, -20], key=lambda num: abs(num - t_5500hpa)
+                )
+
+            target_altidude = float(snow_level.loc[f"{t_850hpa}", f"{t_5500hpa}"])
+            snow_liquid_rate = max(0.5, min(1, (10 + (maximum_temperature) / 2)))
+
+            if altitude < target_altidude:
+                return 0
+            else:
+                return int(np.round(precipitation * snow_liquid_rate, 0))
+        return 0
+
+    def __estimate_missing_observations__(self) -> pd.DataFrame:
+        """
+        Prepare observational data for analysis.
+
+        Returns
+        -------
+        pd.DataFrame
+            Processed observational data.
+        """
+        observations = self.__DATAFRAME_OBSERVED_DATA__.copy()
+        logging.info("Calculating additional precipitation metrics...")
+        observations["uniform_precipitation_1h"] = np.round(
+            observations["precipitation"] * 1 / 24, 1
+        )
+        observations["severe_precipitation_1h"] = np.round(
+            observations["precipitation"]
+            * float(self.__SEVERE_PRECIPITATION_BY_TIMEFRAME__[1]),
+            1,
+        )
+        observations["extreme_precipitation_1h"] = np.round(
+            observations["precipitation"]
+            * float(self.__EXTREME_PRECIPITATION_BY_TIMEFRAME__[1]),
+            1,
+        )
+        observations["uniform_precipitation_12h"] = np.round(
+            observations["precipitation"] * 12 / 24, 1
+        )
+        observations["severe_precipitation_12h"] = np.round(
+            observations["precipitation"]
+            * float(self.__SEVERE_PRECIPITATION_BY_TIMEFRAME__[12]),
+            1,
+        )
+        observations["extreme_precipitation_12h"] = np.round(
+            observations["precipitation"]
+            * float(self.__EXTREME_PRECIPITATION_BY_TIMEFRAME__[12]),
+            1,
+        )
+        observations["snowfall_24h"] = observations.apply(
+            lambda row: self.__estimate_snowfall_value__(
+                float(row["precipitation"]),
+                float(row["minimum_temperature"]),
+                float(row["maximum_temperature"]),
+                float(row["altitude"]),
+            ),
+            axis=1,
+        )
+
+        observations.loc[observations["snowfall_24h"] > 0, "uniform_precipitation_1h"] = 0
+        observations.loc[observations["snowfall_24h"] > 0, "severe_precipitation_1h"] = 0
+        observations.loc[observations["snowfall_24h"] > 0, "extreme_precipitation_1h"] = 0
+        observations.loc[observations["snowfall_24h"] > 0, "uniform_precipitation_12h"] = 0
+        observations.loc[observations["snowfall_24h"] > 0, "severe_precipitation_12h"] = 0
+        observations.loc[observations["snowfall_24h"] > 0, "extreme_precipitation_12h"] = 0
+
+        observations["wind_speed"] = np.round(observations["wind_speed"] * 3.6, 1)
+
+        logging.info("Observational data preparation complete.")
+        self.__DATAFRAME_OBSERVED_DATA__ = observations
+
+    def __geolocate_observed_data__(self):
         """
         Geolocates the observations by merging with station and geocode data.
 
@@ -346,28 +484,30 @@ class EventAnalysis:
         logging.info("Preparing observations for comparison")
 
         merged_observations = pd.merge(
-            self.__df_observations,
-            self.__df_stations,
+            self.__DATAFRAME_OBSERVED_DATA__,
+            self.__DATAFRAME_STATION_DATA,
             on="idema",
             suffixes=("", "stations_"),
         )
 
         merged_observations = pd.merge(
             merged_observations,
-            self.__df_geocodes,
+            self.__DATAFRAME_GEOCODES__,
             on="geocode",
             suffixes=("", "geocode_"),
         )
 
         logging.info("Reordering and initializing missing columns in observations")
-        for col in self.__columns_results:
+        for col in self.__FIELDS_COMBINED_RESULTS__:
             if col not in merged_observations.columns:
                 merged_observations[col] = np.nan
-        self.__df_observations = merged_observations[self.__columns_results]
+        self.__DATAFRAME_OBSERVED_DATA__ = merged_observations[
+            self.__FIELDS_COMBINED_RESULTS__
+        ]
 
-    def __evaluate_observations_severity(self):
+    def __evaluate_observed_severity__(self):
         """
-        Composes the definitive observations data for analysis.
+        Composes the definitive observations data.
 
         This method performs several data preparation steps on the observations
         DataFrame. It begins by ensuring proper data types for the 'geocode' and
@@ -377,7 +517,7 @@ class EventAnalysis:
         severity levels for various meteorological parameters such as minimum and
         maximum temperatures, precipitation over different time periods, snowfall,
         and wind speed, based on predefined warning thresholds. Finally, it
-        reorders the columns to match the expected structure for analysis.
+        reorders the columns to match the expected structure.
 
         Parameters
         ----------
@@ -390,10 +530,10 @@ class EventAnalysis:
 
         logging.info("Preparing observed data for comparison")
         logging.info("Converting geocodes")
-        observations = self.__df_observations.copy()
+        observations = self.__DATAFRAME_OBSERVED_DATA__.copy()
         observations["geocode"] = observations["geocode"].astype(str)
 
-        thresholds = self.__df_thresholds.copy()
+        thresholds = self.__DATAFRAME_THRESHOLD_DATA__.copy()
         thresholds["geocode"] = thresholds["geocode"].astype(str)
         observations["date"] = pd.to_datetime(observations["date"])
 
@@ -646,9 +786,11 @@ class EventAnalysis:
             axis=1,
         )
 
-        self.__df_observations = observations[self.__columns_results]
+        self.__DATAFRAME_OBSERVED_DATA__ = observations[
+            self.__FIELDS_COMBINED_RESULTS__
+        ]
 
-    def __extend_warnings_parameters(self):
+    def __extend_warning_data__(self):
         """
         Extends the warnings DataFrame to include warnings for distinct parameters.
 
@@ -657,7 +799,7 @@ class EventAnalysis:
         that start with "PR_1H." and "PR_12H." prefixes.
 
         The method first copies the original warnings DataFrame and maps the "severity" column
-        to numeric values using the constants.mapping_severity_values dictionary.
+        to numeric values using the commons.mapping_severity_values dictionary.
 
         Then, it creates DataFrames for "PR_1H" and "PR_12H" parameters and repeats the rows
         for each distinct parameter, assigning the new parameter ID to each repeated row.
@@ -672,20 +814,16 @@ class EventAnalysis:
         -------
         None
         """
-        extended = self.__df_warnings.copy()
-        extended["geocode"] = extended["geocode"].astype(str)
-        extended["severity"] = extended["severity"].map(
-            constants.mapping_severity_values
-        )
-        extended["param_name"].fillna("", inplace=True)
+        extended = self.__DATAFRAME_WARNINGS__.copy()
+        extended.loc[:, "geocode"] = extended["geocode"].astype(str)
+        extended.loc[:, "severity"] = extended["severity"].map(event_data_commons.MAPPING_SEVERITY_VALUE)
+        extended.loc[:, "param_name"] = extended.loc[:, "param_name"].fillna("")
 
         precipitation_1h = extended[extended["param_id"] == "PR_1H"]
         precipitation_12h = extended[extended["param_id"] == "PR_12H"]
 
         distinct_params = {
-            key
-            for key in constants.mapping_parameters.keys()
-            if key.startswith("PR_1H.")
+            key for key in event_data_commons.MAPPING_PARAMETERS.keys() if key.startswith("PR_1H.")
         }
         for param in distinct_params:
             repeating_rows = precipitation_1h.copy()
@@ -694,7 +832,7 @@ class EventAnalysis:
 
         distinct_params = {
             key
-            for key in constants.mapping_parameters.keys()
+            for key in event_data_commons.MAPPING_PARAMETERS.keys()
             if key.startswith("PR_12H.")
         }
         for param in distinct_params:
@@ -705,9 +843,9 @@ class EventAnalysis:
         extended = extended[extended["param_id"] != "PR_1H"]
         extended = extended[extended["param_id"] != "PR_12H"]
 
-        self.__df_extended_warnings = extended
+        self.__DATAFRAME_WARNINGS_EXTENDED__ = extended
 
-    def __discretize_observations_warnings(self):
+    def __discretize_observed_data__(self):
         """
         Discretizes the observations DataFrame into distinct warnings.
 
@@ -722,13 +860,11 @@ class EventAnalysis:
         row and the columns are renamed accordingly.
 
         Finally, the method merges the discretized DataFrame with the extended warnings
-        DataFrame and creates a new DataFrame for analysis. The analysis DataFrame
+        DataFrame and creates a new DataFrame for data. The DataFrame
         contains the date, geocode, region, area, province, polygon, idema, name,
         latitude, longitude, altitude, parameter ID, parameter name, predicted severity,
         predicted value, region severity, region value, observed severity, and observed
         value for each distinct warning.
-
-        The resulting analysis DataFrame is stored in the self.__df_analysis attribute.
 
         Returns
         -------
@@ -750,11 +886,11 @@ class EventAnalysis:
             ]
         )
 
-        for p in list(constants.mapping_parameters.keys()):
+        for p in list(event_data_commons.MAPPING_PARAMETERS.keys()):
             if p != "PR" and p != "PR_1H" and p != "PR_12H":
-                value_column = constants.mapping_parameters[p]["id"]
-                severity_column = constants.mapping_parameters[p]["id"] + "_severity"
-                new_rows = self.__df_observations[
+                value_column = event_data_commons.MAPPING_PARAMETERS[p]["id"]
+                severity_column = event_data_commons.MAPPING_PARAMETERS[p]["id"] + "_severity"
+                new_rows = self.__DATAFRAME_OBSERVED_DATA__[
                     [
                         "date",
                         "idema",
@@ -768,7 +904,7 @@ class EventAnalysis:
                         value_column,
                     ]
                 ]
-                new_rows["param_id"] = p
+                new_rows.loc[:, "param_id"] = p
                 new_rows = new_rows.rename(
                     columns={
                         value_column: "station_value",
@@ -779,41 +915,41 @@ class EventAnalysis:
 
         merged_df = pd.merge(
             discretized,
-            self.__df_extended_warnings,
+            self.__DATAFRAME_WARNINGS_EXTENDED__,
             how="left",
             left_on=["date", "geocode", "param_id"],
             right_on=["effective", "geocode", "param_id"],
             suffixes=("_warn", "_obs"),
         )
 
-        analysis = pd.DataFrame(columns=self.__columns_analysis)
-        analysis["date"] =  merged_df["date"].combine_first(merged_df["effective"])
-        analysis["geocode"] = merged_df["geocode"]
-        analysis["region"] = ""
-        analysis["area"] = ""
-        analysis["province"] = merged_df["province"]
-        analysis["polygon"] = ""
-        analysis["idema"] = merged_df["idema"]
-        analysis["name"] = merged_df["name"]
-        analysis["latitude"] = merged_df["latitude"]
-        analysis["longitude"] = merged_df["longitude"]
-        analysis["altitude"] = merged_df["altitude"]
-        analysis["param_id"] = merged_df["param_id"]
-        analysis["param_name"] = ""
-        analysis["predicted_severity"] = merged_df["severity"]
-        analysis["predicted_value"]  = merged_df["param_value"]
-        analysis["region_severity"] = 0
-        analysis["region_value"] = np.nan
-        analysis["observed_severity"] = merged_df["station_severity"]
-        analysis["observed_value"] = merged_df["station_value"]
+        df = pd.DataFrame(columns=self.__FIELDS_PROCESSED_DATA__)
+        df["date"] = merged_df["date"].combine_first(merged_df["effective"])
+        df["geocode"] = merged_df["geocode"]
+        df["region"] = ""
+        df["area"] = ""
+        df["province"] = merged_df["province"]
+        df["polygon"] = ""
+        df["idema"] = merged_df["idema"]
+        df["name"] = merged_df["name"]
+        df["latitude"] = merged_df["latitude"]
+        df["longitude"] = merged_df["longitude"]
+        df["altitude"] = merged_df["altitude"]
+        df["param_id"] = merged_df["param_id"]
+        df["param_name"] = ""
+        df["predicted_severity"] = merged_df["severity"]
+        df["predicted_value"] = merged_df["param_value"]
+        df["region_severity"] = 0
+        df["region_value"] = np.nan
+        df["observed_severity"] = merged_df["station_severity"]
+        df["observed_value"] = merged_df["station_value"]
 
-        self.__df_analysis = analysis
+        self.__DATAFRAME_PREPARED_DATA__ = df
 
-    def __complete_analysis_data(self):
+    def __complete_empty_fields__(self):
         """
-        Complete the analysis DataFrame with region, area, province and polygon data
+        Complete the data DataFrame with region, area, province and polygon data
 
-        This method merges the analysis DataFrame with the geocodes DataFrame, and
+        This method merges the data DataFrame with the geocodes DataFrame, and
         completes the 'region', 'area', 'province' and 'polygon' columns.
 
         The resulting DataFrame has the same columns as the original, but with
@@ -828,26 +964,30 @@ class EventAnalysis:
         None
         """
         merged_df = pd.merge(
-            self.__df_analysis,
-            self.__df_geocodes,
+            self.__DATAFRAME_PREPARED_DATA__,
+            self.__DATAFRAME_GEOCODES__,
             how="left",
             left_on=["geocode"],
-            right_on=["geocode"]
+            right_on=["geocode"],
         )
 
         merged_df["region"] = merged_df["region_y"].combine_first(merged_df["region_x"])
         merged_df["area"] = merged_df["area_y"].combine_first(merged_df["area_x"])
-        merged_df["province"] = merged_df["province_y"].combine_first(merged_df["province_x"])
-        merged_df["polygon"] = merged_df["polygon_y"].combine_first(merged_df["polygon_x"])        
-        
-        self.__df_analysis = merged_df[self.__columns_analysis]
+        merged_df["province"] = merged_df["province_y"].combine_first(
+            merged_df["province_x"]
+        )
+        merged_df["polygon"] = merged_df["polygon_y"].combine_first(
+            merged_df["polygon_x"]
+        )
 
-    def __summarize_observations_analysis(self):
+        self.__DATAFRAME_PREPARED_DATA__ = merged_df[self.__FIELDS_PROCESSED_DATA__]
+
+    def __summarize_observed_data__(self):
         """
-        Summarizes the analysis DataFrame by computing the maximum severity and
+        Summarizes the data by computing the maximum severity and
         maximum/minimum value for each parameter and geocode.
 
-        This method groups the analysis DataFrame by date, param_id and geocode,
+        This method groups the DataFrame by date, param_id and geocode,
         and computes the maximum severity and the maximum/minimum value for each
         parameter. The results are merged with the original DataFrame, replacing
         the original region_severity and region_value columns.
@@ -869,41 +1009,59 @@ class EventAnalysis:
         -------
         None
         """
-        situations_desc = self.__df_analysis[self.__df_analysis["param_id"] != "BT"]
-        situations_asc = self.__df_analysis[self.__df_analysis["param_id"] == "BT"]
+        situations_desc = self.__DATAFRAME_PREPARED_DATA__[
+            self.__DATAFRAME_PREPARED_DATA__["param_id"] != "BT"
+        ]
+        situations_asc = self.__DATAFRAME_PREPARED_DATA__[
+            self.__DATAFRAME_PREPARED_DATA__["param_id"] == "BT"
+        ]
 
-        situations_desc.sort_values(by=["observed_severity", "observed_value"], ascending=[False, False], inplace=True)
-        situations_asc.sort_values(by=["observed_severity", "observed_value"], ascending=[False, True], inplace=True)        
-        
-        situations_desc = situations_desc.groupby(["date", "param_id", "geocode"]).agg(
-            region_severity=("observed_severity", "first"),
-            region_value=("observed_value", "first")).reset_index()
-        situations_asc = situations_asc.groupby(["date", "param_id", "geocode"]).agg(
-            region_severity=("observed_severity", "first"),
-            region_value=("observed_value", "first")).reset_index()
-        
+        situations_desc = situations_desc.sort_values(
+            by=["observed_severity", "observed_value"],
+            ascending=[False, False]
+        )
+        situations_asc = situations_asc.sort_values(
+            by=["observed_severity", "observed_value"],
+            ascending=[False, True]
+        )
+
+        situations_desc = (
+            situations_desc.groupby(["date", "param_id", "geocode"])
+            .agg(
+                region_severity=("observed_severity", "first"),
+                region_value=("observed_value", "first"),
+            )
+            .reset_index()
+        )
+        situations_asc = (
+            situations_asc.groupby(["date", "param_id", "geocode"])
+            .agg(
+                region_severity=("observed_severity", "first"),
+                region_value=("observed_value", "first"),
+            )
+            .reset_index()
+        )
+
         situations = pd.concat([situations_desc, situations_asc], ignore_index=True)
-        analysis = self.__df_analysis
-        analysis.drop(["region_severity", "region_value"], axis=1, inplace=True)
+        df = self.__DATAFRAME_PREPARED_DATA__
+        df = df.drop(["region_severity", "region_value"], axis=1)
 
-        analysis = pd.merge(analysis, situations, 
-                            how="left", 
-                            on=["date", "param_id", "geocode"])
+        df = pd.merge(df, situations, how="left", on=["date", "param_id", "geocode"])
 
-        analysis["predicted_severity"].fillna(0, inplace=True)
-        analysis["region_severity"].fillna(0, inplace=True)
-        analysis["observed_severity"].fillna(0, inplace=True)
-        analysis["predicted_severity"] = analysis["predicted_severity"].astype(int)
-        analysis["region_severity"] = analysis["region_severity"].astype(int)
-        analysis["observed_severity"] = analysis["observed_severity"].astype(int)                
+        df.loc[:, "predicted_severity"] = df.loc[:, "predicted_severity"].fillna(0)
+        df.loc[:, "region_severity"] = df.loc[:, "region_severity"].fillna(0)
+        df.loc[:, "observed_severity"] = df.loc[:, "observed_severity"].fillna(0)
+        df.loc[:, "predicted_severity"] = df["predicted_severity"].astype(int)
+        df.loc[:, "region_severity"] = df["region_severity"].astype(int)
+        df.loc[:, "observed_severity"] = df["observed_severity"].astype(int)
 
-        analysis["param_name"] = analysis["param_id"].map(constants.mapping_parameters_description)
+        df.loc[:, "param_name"] = df["param_id"].map(event_data_commons.MAPPING_PARAMETER_DESCRIPTION)
 
-        self.__df_analysis = analysis
+        self.__DATAFRAME_PREPARED_DATA__ = df
 
-    def save_data(self):
+    def save_prepared_data(self):
         """
-        Saves the analysis results to different files.
+        Saves the data results to different files.
 
         The results are saved to the following files:
 
@@ -913,30 +1071,63 @@ class EventAnalysis:
 
         The files are saved in a directory specified by the event ID.
         """
-        df = self.__df_analysis[["date", "geocode", "region", "area", "province",  "param_name", "predicted_severity", "predicted_value"]]
-        df["predicted_severity"] = df["predicted_severity"].map(constants.mapping_severity_values)
-        df.to_csv(
-            constants.get_path_to_file("predictions", self.__event_id), sep="\t"
+        df = self.__DATAFRAME_PREPARED_DATA__[
+            [
+                "date",
+                "geocode",
+                "region",
+                "area",
+                "province",
+                "param_name",
+                "predicted_severity"
+            ]
+        ]
+        df = df[df["predicted_severity"] > 0]
+        df["predicted_severity"] = df["predicted_severity"].map(
+            event_data_commons.MAPPING_SEVERITY_TEXT
         )
+        df.to_csv(event_data_commons.get_path_to_file("event_predicted_warnings", self.__EVENT_ID__), sep="\t")
 
-        df = self.__df_analysis[["date", "geocode", "region", "area", "province",  "param_name", "region_severity", "region_value"]]
-        df["region_severity"] = df["region_severity"].map(constants.mapping_severity_values)
-        df.to_csv(
-            constants.get_path_to_file("region", self.__event_id), sep="\t"
+        df = self.__DATAFRAME_PREPARED_DATA__[
+            [
+                "date",
+                "geocode",
+                "region",
+                "area",
+                "province",
+                "param_name",
+                "region_severity",
+                "region_value",
+            ]
+        ]
+        df = df[df["region_severity"] > 0]        
+        df["region_severity"] = df["region_severity"].map(
+            event_data_commons.MAPPING_SEVERITY_TEXT
         )
+        df.to_csv(event_data_commons.get_path_to_file("event_region_warnings", self.__EVENT_ID__), sep="\t")
 
-        df = self.__df_analysis[["date", "geocode", "region", "area", "province",  "param_name", "observed_severity", "observed_value"]]
-        df["observed_severity"] = df["observed_severity"].map(constants.mapping_severity_values)
-        df.to_csv(
-            constants.get_path_to_file("results", self.__event_id), sep="\t"
+        df = self.__DATAFRAME_PREPARED_DATA__[
+            [
+                "date",
+                "geocode",
+                "region",
+                "area",
+                "province",
+                "param_name",
+                "predicted_severity",                
+                "observed_severity",
+                "observed_value",
+            ]
+        ]
+        df = df[(df["predicted_severity"] > 0) | (df["observed_severity"] > 0)]
+        df["predicted_severity"] = df["predicted_severity"].map(
+            event_data_commons.MAPPING_SEVERITY_TEXT
+        )        
+        df["observed_severity"] = df["observed_severity"].map(
+            event_data_commons.MAPPING_SEVERITY_TEXT
         )
+        df.to_csv(event_data_commons.get_path_to_file("event_resulting_data", self.__EVENT_ID__), sep="\t")
 
-        self.__df_analysis.to_csv(
-            constants.get_path_to_file("analysis", self.__event_id), sep="\t"
+        self.__DATAFRAME_PREPARED_DATA__.to_csv(
+            event_data_commons.get_path_to_file("event_prepared_data", self.__EVENT_ID__), columns=self.__DATAFRAME_PREPARED_DATA__.columns , sep="\t"
         )
-
-    def analyze_data(self):
-        pass
-
-    def draw_maps(self):
-        visuals.get_map(self.__event_id, self.__event_name, self.__df_analysis)
