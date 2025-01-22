@@ -1127,7 +1127,7 @@ class EventDataAnalysis:
         plt.plot()
         plt.style.use("seaborn-v0_8-whitegrid")
         plt.suptitle(
-            f"MAPA DE DISTRIBUCIÓN DE ERRORES\nError medio por estación",
+            f"MAPA DE DISTRIBUCIÓN DE ERRORES\nError medio por región",
             size="large",
             weight="heavy",
             ha="center",
