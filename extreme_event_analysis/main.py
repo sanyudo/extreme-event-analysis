@@ -22,7 +22,7 @@ aemet_opendata.set_api_key("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbHZhcm8uc2FudWRvQGF
 events = event_data_commons.get_events()
 
 # Iterate over each event and perform analysis
-for i, event in events.sample(1, random_state=42).iterrows():
+for i, event in events.iterrows():
     logging.info(f"Starting analysis: {event['name']} ({event['start']} - {event['end']}). ID = {event['id']}")
     
     event_processor = EventDataProcessor(event["id"], event["name"], event["start"], event["end"])

@@ -949,7 +949,7 @@ class EventDataAnalysis:
     def __over_under_estimates__(self):
         data = self.__DATAFRAME_EVENT_DATA__
         data["understimates"] = data["predicted_severity"] < data["region_severity"]
-        data["overstimates"] = data["predicted_severity"] < data["region_severity"]
+        data["overstimates"] = data["predicted_severity"] > data["region_severity"]
         self.__ANALYSIS_RESULTS__["Frecuencia de subestimación; Todas"] = data[
             "understimates"
         ].mean()
@@ -964,7 +964,7 @@ class EventDataAnalysis:
             data_subset["predicted_severity"] < data_subset["region_severity"]
         )
         data_subset["overstimates"] = (
-            data_subset["predicted_severity"] < data_subset["region_severity"]
+            data_subset["predicted_severity"] > data_subset["region_severity"]
         )
         self.__ANALYSIS_RESULTS__["Frecuencia de subestimación"] = data_subset[
             "understimates"
@@ -982,7 +982,7 @@ class EventDataAnalysis:
                 data_param["predicted_severity"] < data_param["region_severity"]
             )
             data_param["overstimates"] = (
-                data_param["predicted_severity"] < data_param["region_severity"]
+                data_param["predicted_severity"] > data_param["region_severity"]
             )
             self.__ANALYSIS_RESULTS__[f"Frecuencia de subestimación; {p}"] = data_param[
                 "understimates"
