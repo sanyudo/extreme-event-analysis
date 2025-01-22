@@ -134,64 +134,30 @@ class EventDataAnalysis:
         )
         self.__DATAFRAME_EVENT_DATA__ = prepared_data
 
-    def warning_level_comparison(self):
-        observed_analysis = self.__DATAFRAME_EVENT_DATA__.groupby(
-            ["date", "geocode", "param_id"], as_index=False
-        ).agg(
-            region=("region", "first"),
-            area=("area", "first"),
-            province=("province", "first"),
-            polygon=("polygon", "first"),
-            num_stations=("idema", "count"),
-            param_name=("param_name", "first"),
-            predicted_severity=("predicted_severity", "max"),
-            region_severity=("region_severity", "max"),
-            predicted_value=("predicted_value", "max"),
-            region_value=("region_value", "max"),
-        )
-        severity_counts = (
-            self.__DATAFRAME_EVENT_DATA__.groupby(["date", "geocode", "param_id"])[
-                "observed_severity"
-            ]
-            .apply(lambda x: x.value_counts().reindex([0, 1, 2, 3], fill_value=0))
-            .unstack(fill_value=0)
-        )
-        severity_counts.columns = [
-            f"num_observed_severity{i}" for i in severity_counts.columns
-        ]
-        observed_analysis = observed_analysis.merge(
-            severity_counts, on=["date", "geocode", "param_id"], how="left"
-        )
-        self.__DATAFRAME_OBSERVED_COUNTS__ = observed_analysis
-
-        """predicted_severity_counts = (
-            self.__DATAFRAME_EVENT_DATA__.groupby(["param_id"])["predicted_severity"]
-            .apply(lambda x: x.value_counts().reindex([0, 1, 2, 3], fill_value=0))
-            .unstack(fill_value=0)
-        )
-        predicted_severity_counts.columns = [
-            f"num_predicted_severity{i}" for i in predicted_severity_counts.columns
-        ]
-
-        region_severity_counts = (
-            self.__DATAFRAME_EVENT_DATA__.groupby(["param_id"])["region_severity"]
-            .apply(lambda x: x.value_counts().reindex([0, 1, 2, 3], fill_value=0))
-            .unstack(fill_value=0)
-        )
-        region_severity_counts.columns = [
-            f"num_region_severity{i}" for i in region_severity_counts.columns
-        ]
-
-        warning_analysis = self.__DATAFRAME_EVENT_DATA__[["param_id", "param_name"]]
-        warning_analysis = warning_analysis.drop_duplicates()
-        warning_analysis = warning_analysis.merge(
-            predicted_severity_counts, on=["param_id"], how="left"
-        )
-        warning_analysis = warning_analysis.merge(
-            region_severity_counts, on=["param_id"], how="left"
-        )
-
-        self.__DATAFRAME_WARNINGS_COUNTS__ = warning_analysis"""
+    def __prepare_event_data__(self, data: pd.DataFrame) -> pd.DataFrame:
+        data["date"] = pd.to_datetime(data["date"])
+        data["latitude"] = pd.to_numeric(data["latitude"], errors="coerce")
+        data["longitude"] = pd.to_numeric(data["longitude"], errors="coerce")
+        data["altitude"] = pd.to_numeric(data["altitude"], errors="coerce")
+        data["predicted_severity"] = pd.to_numeric(
+            data["predicted_severity"], errors="coerce"
+        ).astype(int)
+        data["region_severity"] = pd.to_numeric(
+            data["region_severity"], errors="coerce"
+        ).astype(int)
+        data["observed_severity"] = pd.to_numeric(
+            data["observed_severity"], errors="coerce"
+        ).astype(int)
+        data["predicted_value"] = pd.to_numeric(
+            data["predicted_value"], errors="coerce"
+        ).astype(float)
+        data["region_value"] = pd.to_numeric(
+            data["region_value"], errors="coerce"
+        ).astype(float)
+        data["observed_value"] = pd.to_numeric(
+            data["observed_value"], errors="coerce"
+        ).astype(float)
+        return data
 
     def get_confusion_matrix(self):
         self.__standard_confusion_matrix__()
@@ -203,17 +169,18 @@ class EventDataAnalysis:
         for e in range(len(self.__PRECIPITATION_ESTIMATIONS__)):
 
             plt.plot()
-            plt.style.use("fivethirtyeight")
+            plt.style.use("seaborn-v0_8-whitegrid")
             plt.suptitle(
-                f"{self.__EVENT_NAME__}; Matriz de confusión\nAvisos previstos y observados (por nivel)",
-                fontsize=12,
-                weight="bold",
+                f"MATRIZ DE CONFUSIÓN DE AVISOS\nPrevistos VS. Observados",
+                size="large",
+                weight="heavy",
                 ha="center",
             )
             plt.title(
-                f"Todas las regiones incluídas\nPrecipitaciones estimadas como {self.__PRECIPITATION_ESTIMATIONS__[e]}s",
-                fontsize=8,
+                f"Avisos categorizados; Todas las regiones\nEstimación de precipitaciones: {self.__PRECIPITATION_ESTIMATIONS__[e]}s",
                 ha="center",
+                size="small",
+                weight="light",
             )
 
             data = self.__DATAFRAME_EVENT_DATA__.copy()
@@ -258,23 +225,23 @@ class EventDataAnalysis:
             sns.heatmap(
                 cm,
                 annot=True,
-                annot_kws={"size": 10},
+                annot_kws={"size": 9},
                 fmt=".3f",
                 cbar=True,
                 vmin=0,
                 vmax=1,
-                cmap="Blues",
+                cmap="coolwarm",
                 xticklabels=self.__CATEGORY_NAMES__,
                 yticklabels=self.__CATEGORY_NAMES__,
                 square=True,
                 linecolor="white",
                 linewidths=0.5,
             )
-            plt.xlabel("Nivel de aviso previsión", weight="bold", fontsize=10)
-            plt.ylabel("Nivel de aviso observado", weight="bold", fontsize=10)
-            plt.yticks(fontsize=8, rotation=45, ha="right")
-            plt.xticks(fontsize=8)
-            plt.gcf().axes[-1].tick_params(labelsize=9)
+            plt.xlabel("Nivel de aviso (Previsión)", weight="semibold", size="small")
+            plt.ylabel("Nivel de aviso (Observado)", weight="semibold", size="small")
+            plt.yticks(fontsize="x-small", rotation=45, ha="right", weight="light")
+            plt.xticks(fontsize="x-small", weight="light")
+            plt.subplots_adjust()
             plt.tight_layout()
 
             path = event_data_commons.get_path_to_file(
@@ -289,17 +256,18 @@ class EventDataAnalysis:
             plt.clf()
 
             plt.plot()
-            plt.style.use("fivethirtyeight")
+            plt.style.use("seaborn-v0_8-whitegrid")
             plt.suptitle(
-                f"{self.__EVENT_NAME__}; Matriz de confusión\nAvisos previstos y observados (existencia)",
-                fontsize=12,
-                weight="bold",
+                f"MATRIZ DE CONFUSIÓN DE AVISOS\nPrevistos VS. Observados",
+                size="large",
+                weight="heavy",
                 ha="center",
             )
             plt.title(
-                f"Todas las regiones incluídas\nPrecipitaciones estimadas como {self.__PRECIPITATION_ESTIMATIONS__[e]}s",
-                fontsize=8,
+                f"Avisos binarios; Todas las regiones\nEstimación de precipitaciones: {self.__PRECIPITATION_ESTIMATIONS__[e]}s",
                 ha="center",
+                size="small",
+                weight="light",
             )
 
             severity_pred = [
@@ -337,23 +305,23 @@ class EventDataAnalysis:
             sns.heatmap(
                 cm,
                 annot=True,
-                annot_kws={"size": 10},
+                annot_kws={"size": 9},
                 fmt=".3f",
                 cbar=True,
                 vmin=0,
                 vmax=1,
-                cmap="Blues",
+                cmap="coolwarm",
                 xticklabels=self.__CATEGORY_SIMPLE__,
                 yticklabels=self.__CATEGORY_SIMPLE__,
                 square=True,
                 linecolor="white",
                 linewidths=0.5,
             )
-            plt.xlabel("Previsión", weight="bold", fontsize=10)
-            plt.ylabel("Observado", weight="bold", fontsize=10)
-            plt.yticks(fontsize=8, rotation=45, ha="right")
-            plt.xticks(fontsize=8)
-            plt.gcf().axes[-1].tick_params(labelsize=9)
+            plt.xlabel("Existencia de aviso (Previsión)", weight="semibold", size="small")
+            plt.ylabel("Existencia de aviso (Observado)", weight="semibold", size="small")
+            plt.yticks(fontsize="x-small", rotation=45, ha="right", weight="light")
+            plt.xticks(fontsize="x-small", weight="light")
+            plt.subplots_adjust()
             plt.tight_layout()
 
             path = event_data_commons.get_path_to_file(
@@ -361,26 +329,27 @@ class EventDataAnalysis:
             )
             path = path.replace(
                 event_data_commons.IMAGE_EXTENSION,
-                f"-000_SiNo_TodasEstaciones_Precipitacion-{self.__PRECIPITATION_ESTIMATIONS__[e]}{event_data_commons.IMAGE_EXTENSION}",
+                f"-000_Binaria_TodasEstaciones_Precipitacion-{self.__PRECIPITATION_ESTIMATIONS__[e]}{event_data_commons.IMAGE_EXTENSION}",
             )
             plt.savefig(path, dpi=300, bbox_inches="tight")
             plt.close()
             plt.clf()
 
     def __restricted_confusion_matrix__(self):
-        for i in range(len(self.__PRECIPITATION_ESTIMATIONS__)):
+        for e in range(len(self.__PRECIPITATION_ESTIMATIONS__)):
             plt.plot()
-            plt.style.use("fivethirtyeight")
+            plt.style.use("seaborn-v0_8-whitegrid")
             plt.suptitle(
-                f"{self.__EVENT_NAME__}; Matriz de confusión\nAvisos previstos y observados (por nivel)",
-                fontsize=12,
-                weight="bold",
+                f"MATRIZ DE CONFUSIÓN DE AVISOS\nPrevistos VS. Observados",
+                size="large",
+                weight="heavy",
                 ha="center",
             )
             plt.title(
-                f"Solamente regiones efectadas por el evento\nPrecipitaciones estimadas como {self.__PRECIPITATION_ESTIMATIONS__[i]}s",
-                fontsize=8,
+                f"Avisos categorizados; Regiones afectadas\nEstimación de precipitaciones: {self.__PRECIPITATION_ESTIMATIONS__[e]}s",
                 ha="center",
+                size="small",
+                weight="light",
             )
 
             data = self.__DATAFRAME_EVENT_DATA__.copy()
@@ -397,7 +366,7 @@ class EventDataAnalysis:
                 (~data["param_id"].str.startswith("PR"))
                 | (
                     data["param_id"].str.contains(
-                        self.__PRECIPITATION_ESTIMATIONS__[i][:-2].upper()
+                        self.__PRECIPITATION_ESTIMATIONS__[e][:-2].upper()
                     )
                 )
             ]
@@ -418,7 +387,7 @@ class EventDataAnalysis:
                 labels=self.__CATEGORY_NAMES__,
             )
             self.__ANALYSIS_RESULTS__[
-                f"Matriz de confusión; {self.__PRECIPITATION_ESTIMATIONS__[i]}"
+                f"Matriz de confusión; {self.__PRECIPITATION_ESTIMATIONS__[e]}"
             ] = precision_score(
                 y_pred=severity_pred,
                 y_true=severity_true,
@@ -430,23 +399,23 @@ class EventDataAnalysis:
             sns.heatmap(
                 cm,
                 annot=True,
-                annot_kws={"size": 10},
+                annot_kws={"size": 9},
                 fmt=".3f",
                 cbar=True,
                 vmin=0,
                 vmax=1,
-                cmap="Blues",
+                cmap="coolwarm",
                 xticklabels=self.__CATEGORY_NAMES__,
                 yticklabels=self.__CATEGORY_NAMES__,
                 square=True,
                 linecolor="white",
                 linewidths=0.5,
             )
-            plt.xlabel("Nivel de aviso previsión", weight="bold", fontsize=10)
-            plt.ylabel("Nivel de aviso observado", weight="bold", fontsize=10)
-            plt.yticks(fontsize=8, rotation=45, ha="right")
-            plt.xticks(fontsize=8)
-            plt.gcf().axes[-1].tick_params(labelsize=9)
+            plt.xlabel("Nivel de aviso (Previsión)", weight="semibold", size="small")
+            plt.ylabel("Nivel de aviso (Observado)", weight="semibold", size="small")
+            plt.yticks(fontsize="x-small", rotation=45, ha="right", weight="light")
+            plt.xticks(fontsize="x-small", weight="light")
+            plt.subplots_adjust()
             plt.tight_layout()
 
             path = event_data_commons.get_path_to_file(
@@ -454,24 +423,25 @@ class EventDataAnalysis:
             )
             path = path.replace(
                 event_data_commons.IMAGE_EXTENSION,
-                f"-003_Categorias_Precipitacion-{self.__PRECIPITATION_ESTIMATIONS__[i]}{event_data_commons.IMAGE_EXTENSION}",
+                f"-003_Categorias_Precipitacion-{self.__PRECIPITATION_ESTIMATIONS__[e]}{event_data_commons.IMAGE_EXTENSION}",
             )
             plt.savefig(path, dpi=300, bbox_inches="tight")
             plt.close()
             plt.clf()
 
             plt.plot()
-            plt.style.use("fivethirtyeight")
+            plt.style.use("seaborn-v0_8-whitegrid")
             plt.suptitle(
-                f"{self.__EVENT_NAME__}; Matriz de confusión\nAvisos previstos y observados (existencia)",
-                fontsize=12,
-                weight="bold",
+                f"MATRIZ DE CONFUSIÓN DE AVISOS\nPrevistos VS. Observados",
+                size="large",
+                weight="heavy",
                 ha="center",
             )
             plt.title(
-                f"Solamente regiones efectadas por el evento\nPrecipitaciones estimadas como {self.__PRECIPITATION_ESTIMATIONS__[i]}s",
-                fontsize=8,
+                f"Avisos binarios; Regiones afectadas\nEstimación de precipitaciones: {self.__PRECIPITATION_ESTIMATIONS__[e]}s",
                 ha="center",
+                size="small",
+                weight="light",
             )
 
             severity_pred = [
@@ -497,7 +467,7 @@ class EventDataAnalysis:
                 labels=self.__CATEGORY_SIMPLE__,
             )
             self.__ANALYSIS_RESULTS__[
-                f"Matriz de confusión; Binaria; {self.__PRECIPITATION_ESTIMATIONS__[i]}"
+                f"Matriz de confusión; Binaria; {self.__PRECIPITATION_ESTIMATIONS__[e]}"
             ] = precision_score(
                 y_pred=severity_pred,
                 y_true=severity_true,
@@ -509,23 +479,23 @@ class EventDataAnalysis:
             sns.heatmap(
                 cm,
                 annot=True,
-                annot_kws={"size": 10},
+                annot_kws={"size": 9},
                 fmt=".3f",
                 cbar=True,
                 vmin=0,
                 vmax=1,
-                cmap="Blues",
+                cmap="coolwarm",
                 xticklabels=self.__CATEGORY_SIMPLE__,
                 yticklabels=self.__CATEGORY_SIMPLE__,
                 square=True,
                 linecolor="white",
                 linewidths=0.5,
             )
-            plt.xlabel("Previsión", weight="bold", fontsize=10)
-            plt.ylabel("Observado", weight="bold", fontsize=10)
-            plt.yticks(fontsize=8, rotation=45, ha="right")
-            plt.xticks(fontsize=8)
-            plt.gcf().axes[-1].tick_params(labelsize=9)
+            plt.xlabel("Existencia de aviso (Previsión)", weight="semibold", size="small")
+            plt.ylabel("Existencia de aviso (Observado)", weight="semibold", size="small")
+            plt.yticks(fontsize="x-small", rotation=45, ha="right", weight="light")
+            plt.xticks(fontsize="x-small", weight="light")
+            plt.subplots_adjust()
             plt.tight_layout()
 
             path = event_data_commons.get_path_to_file(
@@ -533,7 +503,7 @@ class EventDataAnalysis:
             )
             path = path.replace(
                 event_data_commons.IMAGE_EXTENSION,
-                f"-002_SiNo_Precipitacion-{self.__PRECIPITATION_ESTIMATIONS__[i]}{event_data_commons.IMAGE_EXTENSION}",
+                f"-002_Binaria_Precipitacion-{self.__PRECIPITATION_ESTIMATIONS__[e]}{event_data_commons.IMAGE_EXTENSION}",
             )
             plt.savefig(path, dpi=300, bbox_inches="tight")
             plt.close()
@@ -548,19 +518,20 @@ class EventDataAnalysis:
 
         for d in range((data["date"].max() - data["date"].min()).days):
             cm_date = data["date"].min() + timedelta(days=d)
-            for i in range(len(self.__PRECIPITATION_ESTIMATIONS__)):
+            for e in range(len(self.__PRECIPITATION_ESTIMATIONS__)):
                 plt.plot()
-                plt.style.use("fivethirtyeight")
+                plt.style.use("seaborn-v0_8-whitegrid")
                 plt.suptitle(
-                    f"{self.__EVENT_NAME__}; Matriz de confusión\nAvisos previstos y observados (por nivel)\nDía {cm_date.strftime('%d/%m/%Y')}",
-                    fontsize=12,
-                    weight="bold",
+                    f"MATRIZ DE CONFUSIÓN DE AVISOS\nDía {cm_date.strftime('%d/%m/%Y')}",
+                    size="large",
+                    weight="heavy",
                     ha="center",
                 )
                 plt.title(
-                    f"Solamente regiones efectadas por el evento\nPrecipitaciones estimadas como {self.__PRECIPITATION_ESTIMATIONS__[i]}s",
-                    fontsize=8,
+                    f"Avisos categorizados; Regiones afectada\nEstimación de precipitaciones: {self.__PRECIPITATION_ESTIMATIONS__[e]}s",
                     ha="center",
+                    size="small",
+                    weight="light",
                 )
 
                 data_subset = data[data["date"] == cm_date]
@@ -574,7 +545,7 @@ class EventDataAnalysis:
                     (~data_subset["param_id"].str.startswith("PR"))
                     | (
                         data_subset["param_id"].str.contains(
-                            self.__PRECIPITATION_ESTIMATIONS__[i][:-2].upper()
+                            self.__PRECIPITATION_ESTIMATIONS__[e][:-2].upper()
                         )
                     )
                 ]
@@ -595,7 +566,7 @@ class EventDataAnalysis:
                     labels=self.__CATEGORY_NAMES__,
                 )
                 self.__ANALYSIS_RESULTS__[
-                    f"Matriz de confusión; {cm_date.strftime('%Y%m%d')}; {self.__PRECIPITATION_ESTIMATIONS__[i]}"
+                    f"Matriz de confusión; {cm_date.strftime('%Y%m%d')}; {self.__PRECIPITATION_ESTIMATIONS__[e]}"
                 ] = precision_score(
                     y_pred=severity_pred,
                     y_true=severity_true,
@@ -607,23 +578,23 @@ class EventDataAnalysis:
                 sns.heatmap(
                     cm,
                     annot=True,
-                    annot_kws={"size": 10},
+                    annot_kws={"size": 9},
                     fmt=".3f",
                     cbar=True,
                     vmin=0,
                     vmax=1,
-                    cmap="Blues",
+                    cmap="coolwarm",
                     xticklabels=self.__CATEGORY_NAMES__,
                     yticklabels=self.__CATEGORY_NAMES__,
                     square=True,
                     linecolor="white",
                     linewidths=0.5,
                 )
-                plt.xlabel("Nivel de aviso previsión", weight="bold", fontsize=10)
-                plt.ylabel("Nivel de aviso observado", weight="bold", fontsize=10)
-                plt.yticks(fontsize=8, rotation=45, ha="right")
-                plt.xticks(fontsize=8)
-                plt.gcf().axes[-1].tick_params(labelsize=9)
+                plt.xlabel("Nivel de aviso (Previsión)", weight="semibold", size="small")
+                plt.ylabel("Nivel de aviso (Observado)", weight="semibold", size="small")
+                plt.yticks(fontsize="x-small", rotation=45, ha="right", weight="light")
+                plt.xticks(fontsize="x-small", weight="light")
+                plt.subplots_adjust()
                 plt.tight_layout()
 
                 path = event_data_commons.get_path_to_file(
@@ -631,7 +602,7 @@ class EventDataAnalysis:
                 )
                 path = path.replace(
                     event_data_commons.IMAGE_EXTENSION,
-                    f"-004_Dia-{cm_date.strftime('%Y%m%d')}_Precipitacion-{self.__PRECIPITATION_ESTIMATIONS__[i]}{event_data_commons.IMAGE_EXTENSION}",
+                    f"-004_Dia-{cm_date.strftime('%Y%m%d')}_Precipitacion-{self.__PRECIPITATION_ESTIMATIONS__[e]}{event_data_commons.IMAGE_EXTENSION}",
                 )
                 plt.savefig(path, dpi=300, bbox_inches="tight")
                 plt.close()
@@ -647,18 +618,20 @@ class EventDataAnalysis:
         for p in data["param_id"].unique():
             cm_param = event_data_commons.MAPPING_PARAMETER_DESCRIPTION[p]
             data_subset = data[data["param_id"] == p]
+
             plt.plot()
-            plt.style.use("fivethirtyeight")
+            plt.style.use("seaborn-v0_8-whitegrid")
             plt.suptitle(
-                f"{self.__EVENT_NAME__}; Matriz de confusión\nAvisos previstos y observados (por nivel)\nParámetro: {event_data_commons.MAPPING_PARAMETER_ABBREVIATIONS[p]}",
-                fontsize=12,
-                weight="bold",
+                f"MATRIZ DE CONFUSIÓN DE AVISOS\n{event_data_commons.MAPPING_PARAMETER_ABBREVIATIONS[p]}",
+                size="large",
+                weight="heavy",
                 ha="center",
             )
             plt.title(
-                f"Solamente regiones efectadas por el evento",
-                fontsize=8,
+                f"Avisos categorizados; Regiones afectadas",
                 ha="center",
+                size="small",
+                weight="light",
             )
 
             data_subset = data_subset.groupby(["date", "geocode"], as_index=False).agg(
@@ -692,23 +665,23 @@ class EventDataAnalysis:
             sns.heatmap(
                 cm,
                 annot=True,
-                annot_kws={"size": 10},
+                annot_kws={"size": 9},
                 fmt=".3f",
                 cbar=True,
                 vmin=0,
                 vmax=1,
-                cmap="Blues",
+                cmap="coolwarm",
                 xticklabels=self.__CATEGORY_NAMES__,
                 yticklabels=self.__CATEGORY_NAMES__,
                 square=True,
                 linecolor="white",
                 linewidths=0.5,
             )
-            plt.xlabel("Nivel de aviso previsión", weight="bold", fontsize=10)
-            plt.ylabel("Nivel de aviso observado", weight="bold", fontsize=10)
-            plt.yticks(fontsize=8, rotation=45, ha="right")
-            plt.xticks(fontsize=8)
-            plt.gcf().axes[-1].tick_params(labelsize=9)
+            plt.xlabel("Nivel de aviso (Previsión)", weight="semibold", size="small")
+            plt.ylabel("Nivel de aviso (Observado)", weight="semibold", size="small")
+            plt.yticks(fontsize="x-small", rotation=45, ha="right", weight="light")
+            plt.xticks(fontsize="x-small", weight="light")
+            plt.subplots_adjust()
             plt.tight_layout()
 
             path = event_data_commons.get_path_to_file(
@@ -785,7 +758,18 @@ class EventDataAnalysis:
         bar_data = np.array(list(data_true.values()))
         bar_data_cum = bar_data.cumsum(axis=1)
 
+        plt.clf()
+
         _, ax = plt.subplots()
+        plt.plot()
+        plt.style.use("seaborn-v0_8-whitegrid")
+        plt.suptitle(
+            f"GRÁFICO DE BARRAS\nDistribución de avisos Observados",
+            size="large",
+            weight="heavy",
+            ha="center",
+        )
+    
         ax.invert_yaxis()
         ax.xaxis.set_visible(False)
         ax.set_xlim(0, np.sum(bar_data, axis=1).max())
@@ -815,26 +799,22 @@ class EventDataAnalysis:
                     ha="center",
                     va="center",
                     color="black",
-                    fontsize=7,
+                    size="xx-small",
+                    weight="light"
                 )
         ax.legend(
             ncol=len(self.__CATEGORY_NAMES__),
-            bbox_to_anchor=(0, 1),
-            loc="lower left",
+            bbox_to_anchor=(0, -0.1),
+            loc="upper left",
             fontsize="small",
         )
 
-        plt.style.use("fivethirtyeight")
-        plt.ylabel("Parámetro", weight="bold", fontsize=9)
-        plt.xlabel("Número de avisos", weight="bold", fontsize=10)
-        plt.yticks(fontsize=8)
-        plt.xticks(fontsize=8)
-        plt.suptitle(
-            f"{self.__EVENT_NAME__}; Gráfico de barras\nAvisos observados por parámetro",
-            fontsize=14,
-            weight="bold",
-            ha="center",
-        )
+        plt.ylabel("Parámetro meteorológico", weight="semibold", size="small")
+        plt.xlabel("Cantidad de avisos", weight="semibold", size="small")
+        plt.yticks(fontsize="x-small", ha="right", weight="light")
+        plt.xticks(fontsize="x-small", weight="light")
+        plt.subplots_adjust()
+        plt.tight_layout()          
 
         path = event_data_commons.get_path_to_file(
             f"distribution-chart", event=self.__EVENT_ID__
@@ -855,6 +835,15 @@ class EventDataAnalysis:
         bar_data_cum = bar_data.cumsum(axis=1)
 
         _, ax = plt.subplots()
+        plt.plot()
+        plt.style.use("seaborn-v0_8-whitegrid")
+        plt.suptitle(
+            f"GRÁFICO DE BARRAS\nDistribución de avisos Previstos",
+            size="large",
+            weight="heavy",
+            ha="center",
+        )
+
         ax.invert_yaxis()
         ax.xaxis.set_visible(False)
         ax.set_xlim(0, np.sum(bar_data, axis=1).max())
@@ -884,26 +873,22 @@ class EventDataAnalysis:
                     ha="center",
                     va="center",
                     color="black",
-                    fontsize=7,
+                    size="xx-small",
+                    weight="light"
                 )
         ax.legend(
             ncol=len(self.__CATEGORY_NAMES__),
-            bbox_to_anchor=(0, 1),
-            loc="lower left",
+            bbox_to_anchor=(0, -0.1),
+            loc="upper left",
             fontsize="small",
         )
 
-        plt.style.use("fivethirtyeight")
-        plt.ylabel("Parámetro", weight="bold", fontsize=9)
-        plt.xlabel("Número de avisos", weight="bold", fontsize=10)
-        plt.yticks(fontsize=8)
-        plt.xticks(fontsize=8)
-        plt.suptitle(
-            f"{self.__EVENT_NAME__}; Gráfico de barras\nAvisos previstos por parámetro",
-            fontsize=14,
-            weight="bold",
-            ha="center",
-        )
+        plt.ylabel("Parámetro meteorológico", weight="semibold", size="small")
+        plt.xlabel("Cantidad de avisos", weight="semibold", size="small")
+        plt.yticks(fontsize="x-small", ha="right", weight="light")
+        plt.xticks(fontsize="x-small", weight="light")
+        plt.subplots_adjust()
+        plt.tight_layout()        
 
         path = event_data_commons.get_path_to_file(
             f"distribution-chart", event=self.__EVENT_ID__
@@ -915,31 +900,6 @@ class EventDataAnalysis:
         plt.savefig(path, dpi=300, bbox_inches="tight")
         plt.close()
         plt.clf()
-
-    def __prepare_event_data__(self, data: pd.DataFrame) -> pd.DataFrame:
-        data["date"] = pd.to_datetime(data["date"])
-        data["latitude"] = pd.to_numeric(data["latitude"], errors="coerce")
-        data["longitude"] = pd.to_numeric(data["longitude"], errors="coerce")
-        data["altitude"] = pd.to_numeric(data["altitude"], errors="coerce")
-        data["predicted_severity"] = pd.to_numeric(
-            data["predicted_severity"], errors="coerce"
-        ).astype(int)
-        data["region_severity"] = pd.to_numeric(
-            data["region_severity"], errors="coerce"
-        ).astype(int)
-        data["observed_severity"] = pd.to_numeric(
-            data["observed_severity"], errors="coerce"
-        ).astype(int)
-        data["predicted_value"] = pd.to_numeric(
-            data["predicted_value"], errors="coerce"
-        ).astype(float)
-        data["region_value"] = pd.to_numeric(
-            data["region_value"], errors="coerce"
-        ).astype(float)
-        data["observed_value"] = pd.to_numeric(
-            data["observed_value"], errors="coerce"
-        ).astype(float)
-        return data
 
     def get_analysis_stats(self):
         self.__mae__()
@@ -1084,8 +1044,16 @@ class EventDataAnalysis:
 
         shape = gpd.read_file(event_data_commons.get_path_to_file("shapefile"))
 
-        _, ax = plt.subplots()
-        shape.plot(ax=ax, color="lightgrey", aspect=1, edgecolor="black")
+        fig, ax = plt.subplots()
+        plt.plot()
+        plt.style.use("seaborn-v0_8-whitegrid")
+        plt.suptitle(
+            f"MAPA DE DISTRIBUCIÓN DE ERRORES\nError medio por estación",
+            size="large",
+            weight="heavy",
+            ha="center",
+        )        
+        shape.plot(ax=ax, color="lightgrey", aspect=1, edgecolor="darkgrey")
         ax.set_xlim(
             data_grouped["longitude"].min() - 3, data_grouped["longitude"].max() + 3
         )
@@ -1103,20 +1071,16 @@ class EventDataAnalysis:
             markersize=5,
         )
 
-        plt.xlabel("Longitud")
-        plt.ylabel("Latitud")
+        fig = ax.figure
+        cb_ax = fig.axes[1]
+        cb_ax.tick_params(labelsize=8)
 
-        plt.style.use("fivethirtyeight")
-        plt.yticks(fontsize=8)
-        plt.xticks(fontsize=8)
-        plt.suptitle(
-            f"{self.__EVENT_NAME__}; Mapa de sobreestimaciones e infraestimaciones\nAvisos por estación meteorológica",
-            fontsize=14,
-            weight="bold",
-            ha="center",
-        )
-
-        plt.tight_layout()
+        plt.ylabel("Longitud", weight="semibold", size="small")
+        plt.xlabel("Latitud", weight="semibold", size="small")
+        plt.yticks(fontsize="x-small", ha="right", weight="light")
+        plt.xticks(fontsize="x-small", weight="light")
+        plt.subplots_adjust()
+        plt.tight_layout()         
 
         path = event_data_commons.get_path_to_file(
             f"error-map", event=self.__EVENT_ID__
@@ -1159,11 +1123,18 @@ class EventDataAnalysis:
         gdf = gpd.GeoDataFrame(data_grouped, geometry="geometry")
 
         shape = gpd.read_file(event_data_commons.get_path_to_file("shapefile"))
-
-        _, ax = plt.subplots()
-        shape.plot(ax=ax, color="lightgrey", aspect=1, edgecolor="black")
-        ax.set_xlim(data["longitude"].min() - 1, data["longitude"].max() + 1)
-        ax.set_ylim(data["latitude"].min() - 1, data["latitude"].max() + 1)
+        fig, ax = plt.subplots()
+        plt.plot()
+        plt.style.use("seaborn-v0_8-whitegrid")
+        plt.suptitle(
+            f"MAPA DE DISTRIBUCIÓN DE ERRORES\nError medio por estación",
+            size="large",
+            weight="heavy",
+            ha="center",
+        )           
+        shape.plot(ax=ax, color="lightgrey", aspect=1, edgecolor="darkgrey")
+        ax.set_xlim(data["longitude"].min() - 3, data["longitude"].max() + 3)
+        ax.set_ylim(data["latitude"].min() - 3, data["latitude"].max() + 3)
         ctx.add_basemap(ax, source=ctx.providers.CartoDB.Positron)
 
         gdf.plot(
@@ -1172,23 +1143,20 @@ class EventDataAnalysis:
             cmap="coolwarm",
             legend=True,
             legend_kwds={"label": "Error medio (Previsto - Observado)"},
-            edgecolor="black",
+            edgecolor="darkgrey",
         )
 
-        plt.xlabel("Longitud")
-        plt.ylabel("Latitud")
-        plt.style.use("fivethirtyeight")
-        plt.yticks(fontsize=8)
-        plt.xticks(fontsize=8)
-        plt.suptitle(
-            f"{self.__EVENT_NAME__}; Mapa de sobreestimaciones e infraestimaciones\nAvisos por región",
-            fontsize=14,
-            weight="bold",
-            ha="center",
-        )
+        fig = ax.figure
+        cb_ax = fig.axes[1]
+        cb_ax.tick_params(labelsize=8)
 
-        plt.tight_layout()
-
+        plt.ylabel("Longitud", weight="semibold", size="small")
+        plt.xlabel("Latitud", weight="semibold", size="small")
+        plt.yticks(fontsize="x-small", ha="right", weight="light")
+        plt.xticks(fontsize="x-small", weight="light")
+        plt.subplots_adjust()
+        plt.tight_layout()    
+  
         path = event_data_commons.get_path_to_file(
             f"error-map", event=self.__EVENT_ID__
         )
