@@ -29,8 +29,6 @@ import tenacity
 
 import event_data_commons
 
-#eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbHZhcm8uc2FudWRvQGFsdW1ub3MudWkxLmVzIiwianRpIjoiMzMzMWQ4YjgtMjc3OS00NzNmLWFjNDEtYTI0Zjg1NzczOTc4IiwiaXNzIjoiQUVNRVQiLCJpYXQiOjE3MzExNzA2NzgsInVzZXJJZCI6IjMzMzFkOGI4LTI3NzktNDczZi1hYzQxLWEyNGY4NTc3Mzk3OCIsInJvbGUiOiIifQ.bNt0gjOKShj0PAf2XZ0IUMspaaKVlmdAxy4koTY7gjo
-
 __OPENDATA_API_KEY__ = "<REDACTED_API_KEY>"  # Placeholder for security
 __OPENDATA_SERVER__ = "https://opendata.aemet.es/opendata"
 __OPENDATA_REQUEST_HEADERS__ = {"cache-control": "no-cache"}
