@@ -15,8 +15,8 @@ logging.basicConfig(
 )
 
 # Set the root directory for constants
-event_data_commons.set_path_to_root("P:\\TFM\\")
-aemet_opendata.set_api_key("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbHZhcm8uc2FudWRvQGFsdW1ub3MudWkxLmVzIiwianRpIjoiZTRmODQ0OTgtM2YwYy00YTI5LWExNGItMjc0YzRhYjlhYTc4IiwiaXNzIjoiQUVNRVQiLCJpYXQiOjE3Mzc1NzIyMzMsInVzZXJJZCI6ImU0Zjg0NDk4LTNmMGMtNGEyOS1hMTRiLTI3NGM0YWI5YWE3OCIsInJvbGUiOiIifQ.zrbmDmOfC2VMKFuqCQSHixX3eKm0KVYgUBpI4-3JsSI")
+event_data_commons.set_path_to_root("")
+aemet_opendata.set_api_key("")
 
 # Retrieve data events
 events = event_data_commons.get_events()
