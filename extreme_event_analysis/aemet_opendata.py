@@ -29,8 +29,6 @@ import tenacity
 
 import event_data_commons
 
-#eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbHZhcm8uc2FudWRvQGFsdW1ub3MudWkxLmVzIiwianRpIjoiMzMzMWQ4YjgtMjc3OS00NzNmLWFjNDEtYTI0Zjg1NzczOTc4IiwiaXNzIjoiQUVNRVQiLCJpYXQiOjE3MzExNzA2NzgsInVzZXJJZCI6IjMzMzFkOGI4LTI3NzktNDczZi1hYzQxLWEyNGY4NTc3Mzk3OCIsInJvbGUiOiIifQ.bNt0gjOKShj0PAf2XZ0IUMspaaKVlmdAxy4koTY7gjo
-
 __OPENDATA_API_KEY__ = "<REDACTED_API_KEY>"  # Placeholder for security
 __OPENDATA_SERVER__ = "https://opendata.aemet.es/opendata"
 __OPENDATA_REQUEST_HEADERS__ = {"cache-control": "no-cache"}
@@ -40,6 +38,7 @@ __OPENDATA_REQUEST_ENDPOINTS__ = {
     "observations": "/api/valores/climatologicos/diarios/datos/fechaini/{start_date}/fechafin/{end_date}/todasestaciones",
 }
 __CAPS_TAR_FILENAME__ = "caps.tar"
+
 
 # Retry decorator for API requests
 def retry_on_request_exception(func):
@@ -51,7 +50,7 @@ def retry_on_request_exception(func):
     Returns:
         The decorated function.
     """
-    
+
     return tenacity.retry(
         wait=tenacity.wait_fixed(5),
         stop=tenacity.stop_after_attempt(3),
@@ -75,6 +74,7 @@ def __request_url__(endpoint: str) -> str:
 
     return f"{__OPENDATA_SERVER__}{__OPENDATA_REQUEST_ENDPOINTS__[endpoint]}?api_key={__OPENDATA_API_KEY__}"
 
+
 def set_api_key(api_key: str):
     """Set the AEMET OpenData API key.
 
@@ -90,6 +90,7 @@ def set_api_key(api_key: str):
 
     global __OPENDATA_API_KEY__
     __OPENDATA_API_KEY__ = api_key
+
 
 @retry_on_request_exception
 def __request_caps__(event: str, date: datetime):
@@ -179,9 +180,9 @@ def __extract_tars__(event: str, date: datetime):
     """
     Extracts tar files containing warnings for a specific event and date.
 
-    This function extracts all files from a tar archive located in the 
-    specified event and date directory. After extraction, the tar file is 
-    removed. If any gzipped files are present in the extracted content, 
+    This function extracts all files from a tar archive located in the
+    specified event and date directory. After extraction, the tar file is
+    removed. If any gzipped files are present in the extracted content,
     they are further decompressed.
 
     Parameters
@@ -372,7 +373,9 @@ def fetch_observations(event: str, start: datetime, end: datetime) -> None:
         dfs.append(__request_observations__(start + timedelta(n)))
 
     observations_df = pd.concat(dfs, ignore_index=True)
-    observations_df = observations_df.rename(columns=event_data_commons.MAPPING_OBSERVATION_FIELD)
+    observations_df = observations_df.rename(
+        columns=event_data_commons.MAPPING_OBSERVATION_FIELD
+    )
     observations_df = observations_df[event_data_commons.FIELDS_OBSERVATION_DATA]
 
     try:

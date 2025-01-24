@@ -37,7 +37,7 @@ PATH_TO_DIR: Dict[str, List[str]] = {
     "observations": ["data", "datos_observados", "{event}"],
     "analysis": ["data", "analisis", "{event}"],
     "maps": ["data", "analisis", "{event}", "mapas"],
-    "charts": ["data", "analisis", "{event}", "graficos"],    
+    "charts": ["data", "analisis", "{event}", "graficos"],
 }
 
 PATH_TO_FILE: Dict[str, List[str]] = {
@@ -116,17 +116,17 @@ PATH_TO_FILE: Dict[str, List[str]] = {
         *PATH_TO_DIR["root"],
         *PATH_TO_DIR["charts"],
         f"MatrizConfusion{IMAGE_EXTENSION}",
-    ],  
+    ],
     "distribution-chart": [
         *PATH_TO_DIR["root"],
         *PATH_TO_DIR["charts"],
         f"Barras{IMAGE_EXTENSION}",
-    ],          
+    ],
     "error-map": [
         *PATH_TO_DIR["root"],
         *PATH_TO_DIR["charts"],
         f"MapaErrores{IMAGE_EXTENSION}",
-    ],              
+    ],
 }
 
 CAP_XML_NAMESPACE: Dict[str, str] = {"cap": "urn:oasis:names:tc:emergency:cap:1.2"}
@@ -216,7 +216,9 @@ MAPPING_SEVERITY_VALUE: Dict[str, int] = {
     "rojo": 3,
 }
 
-MAPPING_SEVERITY_TEXT: Dict[int, str] = {v: k for k, v in MAPPING_SEVERITY_VALUE.items()}
+MAPPING_SEVERITY_TEXT: Dict[int, str] = {
+    v: k for k, v in MAPPING_SEVERITY_VALUE.items()
+}
 
 MAPPING_STATION_FIELD: Dict[str, str] = {
     "indicativo": "idema",
@@ -1124,7 +1126,7 @@ def get_observations(event: str, stations: list) -> pd.DataFrame:
                 dtype=str,
             )
         ),
-        stations=stations
+        stations=stations,
     )
 
 
@@ -1301,7 +1303,7 @@ def __prepare_geolocated_stations__(geolocated_stations: pd.DataFrame) -> pd.Dat
 
     geolocated_stations[["province", "name"]] = geolocated_stations[
         ["province", "name"]
-    ].apply(lambda col: col.map(str.title))    
+    ].apply(lambda col: col.map(str.title))
 
     if (not geolocated_stations["latitude"].dtype == "float64") or any(
         re.search(r"[a-zA-Z]", str(x)) for x in geolocated_stations["latitude"]
@@ -1348,5 +1350,34 @@ def get_snow_level() -> pd.DataFrame:
     return pd.read_csv(
         get_path_to_file("snow_level"),
         sep="\t",
-        names=["t", "-40", "-35", "-30", "-25", "-20"],
+        names=[
+            "t",
+            "T-42",
+            "T-41",
+            "T-40",
+            "T-39",
+            "T-38",
+            "T-37",
+            "T-36",
+            "T-35",
+            "T-34",
+            "T-33",
+            "T-32",
+            "T-31",
+            "T-30",
+            "T-29",
+            "T-28",
+            "T-27",
+            "T-26",
+            "T-25",
+            "T-24",
+            "T-23",
+            "T-22",
+            "T-21",
+            "T-20",
+            "T-19",
+            "T-18",
+            "T-17",
+            "T-16",
+        ],
     )

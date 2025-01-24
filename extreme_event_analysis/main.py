@@ -15,46 +15,41 @@ logging.basicConfig(
 )
 
 # Set the root directory for constants
-event_data_commons.set_path_to_root("P:\\TFM\\")
-aemet_opendata.set_api_key("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbHZhcm8uc2FudWRvQGFsdW1ub3MudWkxLmVzIiwianRpIjoiZTRmODQ0OTgtM2YwYy00YTI5LWExNGItMjc0YzRhYjlhYTc4IiwiaXNzIjoiQUVNRVQiLCJpYXQiOjE3Mzc1NzIyMzMsInVzZXJJZCI6ImU0Zjg0NDk4LTNmMGMtNGEyOS1hMTRiLTI3NGM0YWI5YWE3OCIsInJvbGUiOiIifQ.zrbmDmOfC2VMKFuqCQSHixX3eKm0KVYgUBpI4-3JsSI")
+event_data_commons.set_path_to_root("")
+
+# Set API Key
+aemet_opendata.set_api_key(
+    ""
+)
 
 # Retrieve data events
 events = event_data_commons.get_events()
 
 # Iterate over each event and perform analysis
 for i, event in events.iterrows():
-    logging.info(f"Starting analysis: {event['name']} ({event['start']} - {event['end']}). ID = {event['id']}")
-    
-    event_processor = EventDataProcessor(event["id"], event["name"], event["start"], event["end"])
-    logging.info(f"Starting data processing...")
-    logging.info(f"Fetching data.")
-    event_processor.fetch_predicted_warnings()
-    logging.info(f"Loading data.")
-    event_processor.load_raw_data()
-    logging.info(f"Obtain observations.")
-    event_processor.fetch_observed_data()     
-    logging.info(f"Preparing data.")
-    event_processor.prepare_event_data()       
-    logging.info(f"Saving data.")
-    event_processor.save_prepared_data()
-    logging.info(f"Draw maps.")
-    event_data_map.get_map(event_processor.get_event_info()["id"], event_processor.get_event_info()["name"], event_processor.get_event_data())
-    logging.info(f"...")
-    logging.info("Data processing completed!")
+    logging.info(
+        f"Starting analysis: {event['name']} ({event['start']} - {event['end']}). ID = {event['id']}"
+    )
 
-    logging.info(f"Starting data analysis...")
-    event_analysis = EventDataAnalysis(event["id"], event["name"], event["start"], event["end"])
-    logging.info(f"Loading data.")    
+    event_processor = EventDataProcessor(
+        event["id"], event["name"], event["start"], event["end"]
+    )
+    event_processor.fetch_predicted_warnings()
+    event_processor.load_raw_data()
+    event_processor.fetch_observed_data()
+    event_processor.prepare_event_data()
+    event_processor.save_prepared_data()
+    event_data_map.get_map(
+        event_processor.get_event_info()["id"],
+        event_processor.get_event_info()["name"],
+        event_processor.get_event_data(),
+    )
+    event_analysis = EventDataAnalysis(
+        event["id"], event["name"], event["start"], event["end"]
+    )
     event_analysis.load_prepared_data()
-    logging.info(f"Confusion matrix.")
-    event_analysis.get_confusion_matrix()      
-    logging.info(f"Distribution chart.")
-    event_analysis.get_distribution_chart()        
-    logging.info(f"Error clustering.")
-    event_analysis.get_error_map()     
-    logging.info(f"Other stats.")
+    event_analysis.get_confusion_matrix()
+    event_analysis.get_distribution_chart()
+    event_analysis.get_error_map()
     event_analysis.get_analysis_stats()
-    logging.info(f"Saving data.")
-    event_analysis.save_analisys_data()        
-    logging.info(f"...")
-    logging.info("Data analysis completed!")
+    event_analysis.save_analisys_data()

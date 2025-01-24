@@ -5,6 +5,7 @@ Provides a function to generate a map with the stations and warning regions.
 Provides a function to generate a map comparing predicted and observed data for a given event id and parameter id.
 
 """
+
 import pandas as pd
 import os
 
@@ -23,17 +24,18 @@ ICONS = {
     "PR_1H": "tint",
     "PR_12H": "tint",
     "PR_1H.UNIFORME": "tint",
-    "PR_12H.UNIFORME": "tint",    
+    "PR_12H.UNIFORME": "tint",
     "PR_1H.SEVERA": "tint",
-    "PR_12H.SEVERA": "tint",       
+    "PR_12H.SEVERA": "tint",
     "PR_1H.EXTREMA": "tint",
-    "PR_12H.EXTREMA": "tint",     
+    "PR_12H.EXTREMA": "tint",
     "NE": "snowflake-o",
     "VI": "refresh",
 }
 
 MAP_CENTER = [40.42, -3.70]
 MAP_TILES = "CartoDB Positron"
+
 
 def get_network(geocodes: pd.DataFrame, stations: pd.DataFrame):
     """
@@ -50,27 +52,26 @@ def get_network(geocodes: pd.DataFrame, stations: pd.DataFrame):
     -------
     None
     """
-    geo_map = folium.Map(location=MAP_CENTER, zoom_start=6, tiles=folium.TileLayer(
-        tiles="CartoDB Positron",
-        name="CartoDB Positron", 
-    ))
+    geo_map = folium.Map(
+        location=MAP_CENTER,
+        zoom_start=6,
+        tiles=folium.TileLayer(
+            tiles="CartoDB Positron",
+            name="CartoDB Positron",
+        ),
+    )
     folium.TileLayer(
         tiles="Cartodb dark_matter",
-        name="CartoDB Dark Matter", 
-    ).add_to(geo_map)             
-    folium.TileLayer(
-        tiles="OpenTopoMap",
-        name="OpenTopoMap"
-    ).add_to(geo_map)            
-    folium.TileLayer(
-        tiles="OpenStreetMap",
-        name="OpenStreetMap"
+        name="CartoDB Dark Matter",
     ).add_to(geo_map)
+    folium.TileLayer(tiles="OpenTopoMap", name="OpenTopoMap").add_to(geo_map)
+    folium.TileLayer(tiles="OpenStreetMap", name="OpenStreetMap").add_to(geo_map)
 
     geocodes["geometry"] = geocodes["polygon"].apply(
-        lambda coordinates: 
-            ([tuple(map(float, pair.split(","))) for pair in coordinates.split()])
+        lambda coordinates: (
+            [tuple(map(float, pair.split(","))) for pair in coordinates.split()]
         )
+    )
 
     layer_regions = folium.FeatureGroup(name=f"Regiones", show=True)
     layer_stations = folium.FeatureGroup(name=f"Estaciones", show=False)
@@ -83,20 +84,26 @@ def get_network(geocodes: pd.DataFrame, stations: pd.DataFrame):
             dash_array=10,
             fill_color="blue",
             fill_opacity=0.66,
-            tooltip=f"{geo['geocode']}: {geo['area']} ({geo['province']}), {geo['region']}"
+            tooltip=f"{geo['geocode']}: {geo['area']} ({geo['province']}), {geo['region']}",
         ).add_to(layer_regions)
 
     for _, sta in stations.iterrows():
         folium.Marker(
             location=[sta["latitude"], sta["longitude"]],
-            icon=folium.Icon(color="lightgray", icon="circle", icon_color="blue", prefix="fa", opacity=1),
+            icon=folium.Icon(
+                color="lightgray",
+                icon="circle",
+                icon_color="blue",
+                prefix="fa",
+                opacity=1,
+            ),
             weight=1,
-            tooltip=f"<b>{sta['idema']}: {sta['name']} ({sta['province']})"
+            tooltip=f"<b>{sta['idema']}: {sta['name']} ({sta['province']})",
         ).add_to(layer_stations)
 
     layer_regions.add_to(geo_map)
     layer_stations.add_to(geo_map)
-    
+
     folium.LayerControl().add_to(geo_map)
 
     title = f"""
@@ -104,10 +111,13 @@ def get_network(geocodes: pd.DataFrame, stations: pd.DataFrame):
         <h5 style="font-size: 20px; text-align: center; font-family: Arial, sans-serif;">Regiones de aviso y estaciones meteorológicas automáticas</h5>
     """
     geo_map.get_root().html.add_child(folium.Element(title))
-    geo_map.save(os.path.join(event_data_commons.get_path_to_dir("data"), f"mapa_aemet.html"))
-    logging.info(f"Map saved")        
-        
-def get_map(event_id:str, event_name:str, event_data: pd.DataFrame = None):
+    geo_map.save(
+        os.path.join(event_data_commons.get_path_to_dir("data"), f"mapa_aemet.html")
+    )
+    logging.info(f"Map saved")
+
+
+def get_map(event_id: str, event_name: str, event_data: pd.DataFrame = None):
     """
     Creates a map comparing predicted and observed data for a given event id and param id.
 
@@ -122,43 +132,67 @@ def get_map(event_id:str, event_name:str, event_data: pd.DataFrame = None):
     None
     """
     if event_data is None:
-        event_data = pd.read_csv(event_data_commons.get_path_to_file("event_prepared_data", event=event_id))
-    event_data["geometry"] = event_data["polygon"].apply(
-        lambda coordinates: 
-            ([tuple(map(float, pair.split(","))) for pair in coordinates.split()])
+        event_data = pd.read_csv(
+            event_data_commons.get_path_to_file("event_prepared_data", event=event_id)
         )
-    
-    event_data = event_data[(event_data["predicted_severity"] > 0) | (event_data["observed_severity"] > 0) | (event_data["region_severity"] > 0)]
+    event_data["geometry"] = event_data["polygon"].apply(
+        lambda coordinates: (
+            [tuple(map(float, pair.split(","))) for pair in coordinates.split()]
+        )
+    )
+
+    event_data = event_data[
+        (event_data["predicted_severity"] > 0)
+        | (event_data["observed_severity"] > 0)
+        | (event_data["region_severity"] > 0)
+    ]
     for d in event_data["date"].unique():
         for p in event_data[event_data["date"] == d]["param_id"].unique():
-            subset = event_data[(event_data["date"] == d) & (event_data["param_id"] == p)]
-            geo_map = folium.Map(location=MAP_CENTER, zoom_start=6, tiles=folium.TileLayer(
-                tiles="CartoDB Positron",
-                name="CartoDB Positron", 
-            ))
+            subset = event_data[
+                (event_data["date"] == d) & (event_data["param_id"] == p)
+            ]
+            geo_map = folium.Map(
+                location=MAP_CENTER,
+                zoom_start=6,
+                tiles=folium.TileLayer(
+                    tiles="CartoDB Positron",
+                    name="CartoDB Positron",
+                ),
+            )
             folium.TileLayer(
                 tiles="Cartodb dark_matter",
-                name="CartoDB Dark Matter", 
-            ).add_to(geo_map)             
-            folium.TileLayer(
-                tiles="OpenTopoMap",
-                name="OpenTopoMap"
-            ).add_to(geo_map)            
-            folium.TileLayer(
-                tiles="OpenStreetMap",
-                name="OpenStreetMap"
+                name="CartoDB Dark Matter",
             ).add_to(geo_map)
+            folium.TileLayer(tiles="OpenTopoMap", name="OpenTopoMap").add_to(geo_map)
+            folium.TileLayer(tiles="OpenStreetMap", name="OpenStreetMap").add_to(
+                geo_map
+            )
 
-            layer_warnings = folium.FeatureGroup(name=f"Avisos | {d.strftime('%d/%m/%Y')} | {event_data_commons.MAPPING_PARAMETERS[p]['description']}", show=True)
-            layer_results = folium.FeatureGroup(name=f"Situación | {d.strftime('%d/%m/%Y')} | {event_data_commons.MAPPING_PARAMETERS[p]['description']}", show=False)
-            layer_stations = folium.FeatureGroup(name=f"Estaciones | {d.strftime('%d/%m/%Y')} | {event_data_commons.MAPPING_PARAMETERS[p]['description']}", show=False)
+            layer_warnings = folium.FeatureGroup(
+                name=f"Avisos | {d.strftime('%d/%m/%Y')} | {event_data_commons.MAPPING_PARAMETERS[p]['description']}",
+                show=True,
+            )
+            layer_results = folium.FeatureGroup(
+                name=f"Situación | {d.strftime('%d/%m/%Y')} | {event_data_commons.MAPPING_PARAMETERS[p]['description']}",
+                show=False,
+            )
+            layer_stations = folium.FeatureGroup(
+                name=f"Estaciones | {d.strftime('%d/%m/%Y')} | {event_data_commons.MAPPING_PARAMETERS[p]['description']}",
+                show=False,
+            )
 
             for _, obs in subset.iterrows():
                 folium.Marker(
                     location=[obs["latitude"], obs["longitude"]],
-                    icon=folium.Icon(color="lightgray", icon="circle", icon_color=TEXT_COLORS[int(obs['observed_severity'])], prefix="fa", opacity=1),
+                    icon=folium.Icon(
+                        color="lightgray",
+                        icon="circle",
+                        icon_color=TEXT_COLORS[int(obs["observed_severity"])],
+                        prefix="fa",
+                        opacity=1,
+                    ),
                     weight=1,
-                    tooltip=f"<b>Datos observados</b><br>{obs['idema']}: {obs['name']} ({obs['province']})<br><b>{event_data_commons.MAPPING_PARAMETERS[p]['description']}</b>: {float(obs['observed_value'])} {event_data_commons.MAPPING_PARAMETERS[p]['units']} ({obs['date'].strftime('%d/%m/%Y')})"
+                    tooltip=f"<b>Datos observados</b><br>{obs['idema']}: {obs['name']} ({obs['province']})<br><b>{event_data_commons.MAPPING_PARAMETERS[p]['description']}</b>: {float(obs['observed_value'])} {event_data_commons.MAPPING_PARAMETERS[p]['units']} ({obs['date'].strftime('%d/%m/%Y')})",
                 ).add_to(layer_stations)
 
             reduced = subset.drop(["observed_value", "observed_severity"], axis=1)
@@ -172,7 +206,7 @@ def get_map(event_id:str, event_name:str, event_data: pd.DataFrame = None):
                     dash_array=10,
                     fill_color=TEXT_COLORS[int(row["predicted_severity"])],
                     fill_opacity=0.66,
-                    tooltip=f"Predicción para {row['area']} ({row['province']}), {row['region']}<br><b>{event_data_commons.MAPPING_PARAMETERS[p]['description']}</b>: {float(row['predicted_value'])} {event_data_commons.MAPPING_PARAMETERS[p]['units']} ({row['date'].strftime('%d/%m/%Y')})"
+                    tooltip=f"Predicción para {row['area']} ({row['province']}), {row['region']}<br><b>{event_data_commons.MAPPING_PARAMETERS[p]['description']}</b>: {float(row['predicted_value'])} {event_data_commons.MAPPING_PARAMETERS[p]['units']} ({row['date'].strftime('%d/%m/%Y')})",
                 ).add_to(layer_warnings)
 
                 folium.Polygon(
@@ -180,14 +214,14 @@ def get_map(event_id:str, event_name:str, event_data: pd.DataFrame = None):
                     color=TEXT_COLORS[int(row["region_severity"])],
                     weight=2.5,
                     fill_color=TEXT_COLORS[int(row["region_severity"])],
-                    fill_opacity=0.66,         
-                    tooltip=f"Situación para {row['area']} ({row['province']}) {row['region']}<br><b>{event_data_commons.MAPPING_PARAMETERS[p]['description']}</b>: {float(row['region_value'])} {event_data_commons.MAPPING_PARAMETERS[p]['units']} ({row['date'].strftime('%d/%m/%Y')})"
+                    fill_opacity=0.66,
+                    tooltip=f"Situación para {row['area']} ({row['province']}) {row['region']}<br><b>{event_data_commons.MAPPING_PARAMETERS[p]['description']}</b>: {float(row['region_value'])} {event_data_commons.MAPPING_PARAMETERS[p]['units']} ({row['date'].strftime('%d/%m/%Y')})",
                 ).add_to(layer_results)
 
             layer_warnings.add_to(geo_map)
             layer_results.add_to(geo_map)
             layer_stations.add_to(geo_map)
-           
+
             folium.LayerControl().add_to(geo_map)
 
             title = f"""
@@ -196,5 +230,10 @@ def get_map(event_id:str, event_name:str, event_data: pd.DataFrame = None):
                 <h5 style="font-size: 20px; text-align: center; font-family: Arial, sans-serif;">Comparativa por regiones entre predicción avisos y datos observados</h5>
             """
             geo_map.get_root().html.add_child(folium.Element(title))
-            geo_map.save(os.path.join(event_data_commons.get_path_to_dir("maps", event_id), f"Dia-{d.strftime('%Y%m%d')}_Parametro-{p}.html"))
+            geo_map.save(
+                os.path.join(
+                    event_data_commons.get_path_to_dir("maps", event_id),
+                    f"Dia-{d.strftime('%Y%m%d')}_Parametro-{p}.html",
+                )
+            )
             logging.info(f"Map saved")

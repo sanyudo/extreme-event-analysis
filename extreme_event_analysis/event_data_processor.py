@@ -79,15 +79,27 @@ class EventDataProcessor:
         "wind_speed_severity",
     ]
 
-    __DATAFRAME_OBSERVED_DATA__ = pd.DataFrame(columns=event_data_commons.FIELDS_OBSERVATION_DATA)
-    __DATAFRAME_WARNINGS__ = pd.DataFrame(columns=event_data_commons.FIELDS_WARNING_DATA)
-    __DATAFRAME_WARNINGS_EXTENDED__ = pd.DataFrame(columns=event_data_commons.FIELDS_WARNING_DATA)
-    __DATAFRAME_STATION_DATA = pd.DataFrame(columns=event_data_commons.FIELDS_STATION_DATA)
-    __DATAFRAME_THRESHOLD_DATA__ = pd.DataFrame(columns=event_data_commons.FIELDS_THRESHOLD_DATA)
-    __DATAFRAME_GEOCODES__ = pd.DataFrame(columns=event_data_commons.FIELDS_GEOCODE_DATA)
+    __DATAFRAME_OBSERVED_DATA__ = pd.DataFrame(
+        columns=event_data_commons.FIELDS_OBSERVATION_DATA
+    )
+    __DATAFRAME_WARNINGS__ = pd.DataFrame(
+        columns=event_data_commons.FIELDS_WARNING_DATA
+    )
+    __DATAFRAME_WARNINGS_EXTENDED__ = pd.DataFrame(
+        columns=event_data_commons.FIELDS_WARNING_DATA
+    )
+    __DATAFRAME_STATION_DATA = pd.DataFrame(
+        columns=event_data_commons.FIELDS_STATION_DATA
+    )
+    __DATAFRAME_THRESHOLD_DATA__ = pd.DataFrame(
+        columns=event_data_commons.FIELDS_THRESHOLD_DATA
+    )
+    __DATAFRAME_GEOCODES__ = pd.DataFrame(
+        columns=event_data_commons.FIELDS_GEOCODE_DATA
+    )
     __DATAFRAME_PREPARED_DATA__ = pd.DataFrame(columns=__FIELDS_PROCESSED_DATA__)
 
-    __SEVERE_PRECIPITATION_BY_TIMEFRAME__ = {1: 0.50, 12: 0.75}
+    __SEVERE_PRECIPITATION_BY_TIMEFRAME__ = {1: 0.33, 12: 0.75}
     __EXTREME_PRECIPITATION_BY_TIMEFRAME__ = {1: 0.75, 12: 1.00}
 
     def __init__(
@@ -376,24 +388,19 @@ class EventDataProcessor:
             t_850hpa = int(
                 max(
                     -10,
-                    min(
-                        10,
-                        np.round(
-                            minimum_temperature - (1500 - altitude) / 1000 * 6.5, 0
-                        ),
-                    ),
+                    np.round(minimum_temperature - (1500 - altitude) / 1000 * 6.5, 0),
                 )
             )
 
-            if t_5500hpa > -20:
+            if t_5500hpa > -16 or t_850hpa > 3:
                 return 0
             else:
-                t_5500hpa = min(
-                    [-40, -35, -30, -25, -20], key=lambda num: abs(num - t_5500hpa)
-                )
+                t_5500hpa = min(-42, t_5500hpa)
 
-            target_altidude = float(snow_level.loc[f"{t_850hpa}", f"{t_5500hpa}"])
-            snow_liquid_rate = max(0.5, min(1, (10 + (maximum_temperature) / 2)))
+            target_altidude = (
+                float(snow_level.loc[f"{t_850hpa}", f"T{t_5500hpa}"]) + 1500
+            )
+            snow_liquid_rate = 1
 
             if altitude < target_altidude:
                 return 0
@@ -448,12 +455,24 @@ class EventDataProcessor:
             axis=1,
         )
 
-        observations.loc[observations["snowfall_24h"] > 0, "uniform_precipitation_1h"] = 0
-        observations.loc[observations["snowfall_24h"] > 0, "severe_precipitation_1h"] = 0
-        observations.loc[observations["snowfall_24h"] > 0, "extreme_precipitation_1h"] = 0
-        observations.loc[observations["snowfall_24h"] > 0, "uniform_precipitation_12h"] = 0
-        observations.loc[observations["snowfall_24h"] > 0, "severe_precipitation_12h"] = 0
-        observations.loc[observations["snowfall_24h"] > 0, "extreme_precipitation_12h"] = 0
+        observations.loc[
+            observations["snowfall_24h"] > 0, "uniform_precipitation_1h"
+        ] = 0
+        observations.loc[
+            observations["snowfall_24h"] > 0, "severe_precipitation_1h"
+        ] = 0
+        observations.loc[
+            observations["snowfall_24h"] > 0, "extreme_precipitation_1h"
+        ] = 0
+        observations.loc[
+            observations["snowfall_24h"] > 0, "uniform_precipitation_12h"
+        ] = 0
+        observations.loc[
+            observations["snowfall_24h"] > 0, "severe_precipitation_12h"
+        ] = 0
+        observations.loc[
+            observations["snowfall_24h"] > 0, "extreme_precipitation_12h"
+        ] = 0
 
         observations["wind_speed"] = np.round(observations["wind_speed"] * 3.6, 1)
 
@@ -816,14 +835,18 @@ class EventDataProcessor:
         """
         extended = self.__DATAFRAME_WARNINGS__.copy()
         extended.loc[:, "geocode"] = extended["geocode"].astype(str)
-        extended.loc[:, "severity"] = extended["severity"].map(event_data_commons.MAPPING_SEVERITY_VALUE)
+        extended.loc[:, "severity"] = extended["severity"].map(
+            event_data_commons.MAPPING_SEVERITY_VALUE
+        )
         extended.loc[:, "param_name"] = extended.loc[:, "param_name"].fillna("")
 
         precipitation_1h = extended[extended["param_id"] == "PR_1H"]
         precipitation_12h = extended[extended["param_id"] == "PR_12H"]
 
         distinct_params = {
-            key for key in event_data_commons.MAPPING_PARAMETERS.keys() if key.startswith("PR_1H.")
+            key
+            for key in event_data_commons.MAPPING_PARAMETERS.keys()
+            if key.startswith("PR_1H.")
         }
         for param in distinct_params:
             repeating_rows = precipitation_1h.copy()
@@ -889,7 +912,9 @@ class EventDataProcessor:
         for p in list(event_data_commons.MAPPING_PARAMETERS.keys()):
             if p != "PR" and p != "PR_1H" and p != "PR_12H":
                 value_column = event_data_commons.MAPPING_PARAMETERS[p]["id"]
-                severity_column = event_data_commons.MAPPING_PARAMETERS[p]["id"] + "_severity"
+                severity_column = (
+                    event_data_commons.MAPPING_PARAMETERS[p]["id"] + "_severity"
+                )
                 new_rows = self.__DATAFRAME_OBSERVED_DATA__[
                     [
                         "date",
@@ -1017,12 +1042,10 @@ class EventDataProcessor:
         ]
 
         situations_desc = situations_desc.sort_values(
-            by=["observed_severity", "observed_value"],
-            ascending=[False, False]
+            by=["observed_severity", "observed_value"], ascending=[False, False]
         )
         situations_asc = situations_asc.sort_values(
-            by=["observed_severity", "observed_value"],
-            ascending=[False, True]
+            by=["observed_severity", "observed_value"], ascending=[False, True]
         )
 
         situations_desc = (
@@ -1055,7 +1078,9 @@ class EventDataProcessor:
         df.loc[:, "region_severity"] = df["region_severity"].astype(int)
         df.loc[:, "observed_severity"] = df["observed_severity"].astype(int)
 
-        df.loc[:, "param_name"] = df["param_id"].map(event_data_commons.MAPPING_PARAMETER_DESCRIPTION)
+        df.loc[:, "param_name"] = df["param_id"].map(
+            event_data_commons.MAPPING_PARAMETER_DESCRIPTION
+        )
 
         self.__DATAFRAME_PREPARED_DATA__ = df
 
@@ -1079,14 +1104,20 @@ class EventDataProcessor:
                 "area",
                 "province",
                 "param_name",
-                "predicted_severity"
+                "predicted_severity",
             ]
         ]
         df = df[df["predicted_severity"] > 0]
         df["predicted_severity"] = df["predicted_severity"].map(
             event_data_commons.MAPPING_SEVERITY_TEXT
         )
-        df.to_csv(event_data_commons.get_path_to_file("event_predicted_warnings", self.__EVENT_ID__), sep="\t")
+        df = df.drop_duplicates()
+        df.to_csv(
+            event_data_commons.get_path_to_file(
+                "event_predicted_warnings", self.__EVENT_ID__
+            ),
+            sep="\t",
+        )
 
         df = self.__DATAFRAME_PREPARED_DATA__[
             [
@@ -1100,11 +1131,17 @@ class EventDataProcessor:
                 "region_value",
             ]
         ]
-        df = df[df["region_severity"] > 0]        
+        df = df[df["region_severity"] > 0]
         df["region_severity"] = df["region_severity"].map(
             event_data_commons.MAPPING_SEVERITY_TEXT
         )
-        df.to_csv(event_data_commons.get_path_to_file("event_region_warnings", self.__EVENT_ID__), sep="\t")
+        df = df.drop_duplicates()
+        df.to_csv(
+            event_data_commons.get_path_to_file(
+                "event_region_warnings", self.__EVENT_ID__
+            ),
+            sep="\t",
+        )
 
         df = self.__DATAFRAME_PREPARED_DATA__[
             [
@@ -1114,7 +1151,7 @@ class EventDataProcessor:
                 "area",
                 "province",
                 "param_name",
-                "predicted_severity",                
+                "predicted_severity",
                 "observed_severity",
                 "observed_value",
             ]
@@ -1122,12 +1159,22 @@ class EventDataProcessor:
         df = df[(df["predicted_severity"] > 0) | (df["observed_severity"] > 0)]
         df["predicted_severity"] = df["predicted_severity"].map(
             event_data_commons.MAPPING_SEVERITY_TEXT
-        )        
+        )
         df["observed_severity"] = df["observed_severity"].map(
             event_data_commons.MAPPING_SEVERITY_TEXT
         )
-        df.to_csv(event_data_commons.get_path_to_file("event_resulting_data", self.__EVENT_ID__), sep="\t")
+        df = df.drop_duplicates()
+        df.to_csv(
+            event_data_commons.get_path_to_file(
+                "event_resulting_data", self.__EVENT_ID__
+            ),
+            sep="\t",
+        )
 
         self.__DATAFRAME_PREPARED_DATA__.to_csv(
-            event_data_commons.get_path_to_file("event_prepared_data", self.__EVENT_ID__), columns=self.__DATAFRAME_PREPARED_DATA__.columns , sep="\t"
+            event_data_commons.get_path_to_file(
+                "event_prepared_data", self.__EVENT_ID__
+            ),
+            columns=self.__DATAFRAME_PREPARED_DATA__.columns,
+            sep="\t",
         )

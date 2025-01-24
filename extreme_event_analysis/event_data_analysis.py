@@ -1,3 +1,8 @@
+"""
+This module provides functions for performing data analysis on extreme weather events.
+
+"""
+
 from sklearn.metrics import (
     confusion_matrix,
     cohen_kappa_score,
@@ -123,6 +128,21 @@ class EventDataAnalysis:
         self.__EVENT_END__ = event_end
 
     def load_prepared_data(self):
+        """
+        Loads and prepares the event data for analysis.
+
+        This method reads the prepared event data from a file, processes it,
+        and stores the resulting DataFrame in the instance variable
+        __DATAFRAME_EVENT_DATA__ for further analysis.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
         prepared_data = self.__prepare_event_data__(
             pd.read_csv(
                 event_data_commons.get_path_to_file(
@@ -135,6 +155,33 @@ class EventDataAnalysis:
         self.__DATAFRAME_EVENT_DATA__ = prepared_data
 
     def __prepare_event_data__(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Prepares the event data by converting columns to the proper data type.
+
+        This method takes a DataFrame as input and performs the following
+        operations:
+
+        - Converts the 'date' column to a datetime object.
+        - Converts the 'latitude', 'longitude' and 'altitude' columns to
+          numeric values (floats), with non-numeric values being replaced by
+          NaN.
+        - Converts the 'predicted_severity', 'region_severity' and
+          'observed_severity' columns to integer values, with non-numeric
+          values being replaced by NaN.
+        - Converts the 'predicted_value', 'region_value' and 'observed_value'
+          columns to float values, with non-numeric values being replaced by
+          NaN.
+
+        Parameters
+        ----------
+        data : pd.DataFrame
+            The DataFrame containing the event data to be prepared.
+
+        Returns
+        -------
+        pd.DataFrame
+            The prepared DataFrame.
+        """
         data["date"] = pd.to_datetime(data["date"])
         data["latitude"] = pd.to_numeric(data["latitude"], errors="coerce")
         data["longitude"] = pd.to_numeric(data["longitude"], errors="coerce")
@@ -160,12 +207,51 @@ class EventDataAnalysis:
         return data
 
     def get_confusion_matrix(self):
+        """
+        Generates various types of confusion matrices for event data analysis.
+
+        This method orchestrates the creation of different confusion matrices
+        by invoking specific methods responsible for generating them. The matrices
+        provide insights into the discrepancies between predicted and observed
+        data across various parameters and time scales.
+
+        The following confusion matrices are generated:
+        - Standard confusion matrix for all parameters and regions.
+        - Restricted confusion matrix with specific constraints.
+        - Daily confusion matrix for each date within the event duration.
+        - Parameter-specific confusion matrix for each distinct parameter.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
         self.__standard_confusion_matrix__()
         self.__restricted_confusion_matrix__()
         self.__daily_confusion_matrix__()
         self.__parameter_confusion_matrix__()
 
     def __standard_confusion_matrix__(self):
+        """
+        Generates the standard confusion matrices for all parameters and regions.
+
+        This method generates the standard confusion matrices for all parameters and
+        regions, and saves them as images in the 'charts' directory with the name
+        'confusion-matrix-<event_id>-001_Categorias_TodasEstaciones_<estimation>.png'.
+        The matrices are generated for both the standard categorization and the
+        binary categorization.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        None
+        """
         for e in range(len(self.__PRECIPITATION_ESTIMATIONS__)):
 
             plt.plot()
@@ -317,8 +403,12 @@ class EventDataAnalysis:
                 linecolor="white",
                 linewidths=0.5,
             )
-            plt.xlabel("Existencia de aviso (Previsión)", weight="semibold", size="small")
-            plt.ylabel("Existencia de aviso (Observado)", weight="semibold", size="small")
+            plt.xlabel(
+                "Existencia de aviso (Previsión)", weight="semibold", size="small"
+            )
+            plt.ylabel(
+                "Existencia de aviso (Observado)", weight="semibold", size="small"
+            )
             plt.yticks(fontsize="x-small", rotation=45, ha="right", weight="light")
             plt.xticks(fontsize="x-small", weight="light")
             plt.subplots_adjust()
@@ -336,6 +426,9 @@ class EventDataAnalysis:
             plt.clf()
 
     def __restricted_confusion_matrix__(self):
+        """
+        Method to generate confusion matrices for each parameter in the event, restricted to the regions that were actually affected by the event.
+        """
         for e in range(len(self.__PRECIPITATION_ESTIMATIONS__)):
             plt.plot()
             plt.style.use("seaborn-v0_8-whitegrid")
@@ -491,8 +584,12 @@ class EventDataAnalysis:
                 linecolor="white",
                 linewidths=0.5,
             )
-            plt.xlabel("Existencia de aviso (Previsión)", weight="semibold", size="small")
-            plt.ylabel("Existencia de aviso (Observado)", weight="semibold", size="small")
+            plt.xlabel(
+                "Existencia de aviso (Previsión)", weight="semibold", size="small"
+            )
+            plt.ylabel(
+                "Existencia de aviso (Observado)", weight="semibold", size="small"
+            )
             plt.yticks(fontsize="x-small", rotation=45, ha="right", weight="light")
             plt.xticks(fontsize="x-small", weight="light")
             plt.subplots_adjust()
@@ -510,6 +607,9 @@ class EventDataAnalysis:
             plt.clf()
 
     def __daily_confusion_matrix__(self):
+        """
+        Generates the daily confusion matrices for all parameters and regions.
+        """
         data = self.__DATAFRAME_EVENT_DATA__.copy()
         valid_geocodes = data[
             (data["predicted_severity"] > 0) | (data["region_severity"] > 0)
@@ -590,8 +690,12 @@ class EventDataAnalysis:
                     linecolor="white",
                     linewidths=0.5,
                 )
-                plt.xlabel("Nivel de aviso (Previsión)", weight="semibold", size="small")
-                plt.ylabel("Nivel de aviso (Observado)", weight="semibold", size="small")
+                plt.xlabel(
+                    "Nivel de aviso (Previsión)", weight="semibold", size="small"
+                )
+                plt.ylabel(
+                    "Nivel de aviso (Observado)", weight="semibold", size="small"
+                )
                 plt.yticks(fontsize="x-small", rotation=45, ha="right", weight="light")
                 plt.xticks(fontsize="x-small", weight="light")
                 plt.subplots_adjust()
@@ -609,6 +713,9 @@ class EventDataAnalysis:
                 plt.clf()
 
     def __parameter_confusion_matrix__(self):
+        """
+        Generates the confusion matrices for each parameter and region.
+        """
         data = self.__DATAFRAME_EVENT_DATA__.copy()
         valid_geocodes = data[
             (data["predicted_severity"] > 0) | (data["region_severity"] > 0)
@@ -696,9 +803,25 @@ class EventDataAnalysis:
             plt.clf()
 
     def get_distribution_chart(self):
+        """
+        Generates a bar chart for each parameter showing the distribution of predicted and observed severities.
+        """
         self.__distribution_chart__()
 
     def __distribution_chart__(self):
+        """
+        Generates bar charts showing the distribution of predicted and observed severities.
+
+        This method processes event data to create bar charts that illustrate the distribution
+        of predicted and observed severities across various meteorological parameters. The charts
+        are saved as images in the 'charts' directory with filenames indicating the distribution
+        type ('Region' for observed, 'Prevision' for predicted).
+
+        The method uses color coding to represent different severity levels, with text annotations
+        indicating the number of warnings for each severity level. The charts provide a visual
+        comparison of the distribution of warnings for different parameters.
+        """
+
         data = self.__DATAFRAME_EVENT_DATA__.copy()
         data = data[
             (data["predicted_severity"] > 0)
@@ -769,7 +892,7 @@ class EventDataAnalysis:
             weight="heavy",
             ha="center",
         )
-    
+
         ax.invert_yaxis()
         ax.xaxis.set_visible(False)
         ax.set_xlim(0, np.sum(bar_data, axis=1).max())
@@ -800,7 +923,7 @@ class EventDataAnalysis:
                     va="center",
                     color="black",
                     size="xx-small",
-                    weight="light"
+                    weight="light",
                 )
         ax.legend(
             ncol=len(self.__CATEGORY_NAMES__),
@@ -814,7 +937,7 @@ class EventDataAnalysis:
         plt.yticks(fontsize="x-small", ha="right", weight="light")
         plt.xticks(fontsize="x-small", weight="light")
         plt.subplots_adjust()
-        plt.tight_layout()          
+        plt.tight_layout()
 
         path = event_data_commons.get_path_to_file(
             f"distribution-chart", event=self.__EVENT_ID__
@@ -874,7 +997,7 @@ class EventDataAnalysis:
                     va="center",
                     color="black",
                     size="xx-small",
-                    weight="light"
+                    weight="light",
                 )
         ax.legend(
             ncol=len(self.__CATEGORY_NAMES__),
@@ -888,7 +1011,7 @@ class EventDataAnalysis:
         plt.yticks(fontsize="x-small", ha="right", weight="light")
         plt.xticks(fontsize="x-small", weight="light")
         plt.subplots_adjust()
-        plt.tight_layout()        
+        plt.tight_layout()
 
         path = event_data_commons.get_path_to_file(
             f"distribution-chart", event=self.__EVENT_ID__
@@ -902,11 +1025,26 @@ class EventDataAnalysis:
         plt.clf()
 
     def get_analysis_stats(self):
+        """
+        Computes several analysis statistics for the event.
+
+        The statistics include Mean Absolute Error (MAE) between predicted and
+        observed severity, the proportion of overestimated and underestimated
+        predictions, and the Cohen's kappa score.
+
+        The results are stored in the self.__ANALYSIS_RESULTS__ dictionary.
+        """
         self.__mae__()
         self.__over_under_estimates__()
         self.__cohen_kappa_score__()
 
     def __mae__(self):
+        """
+        Computes the Mean Absolute Error (MAE) between predicted and observed severity.
+
+        The MAE is computed for all parameters and for each parameter separately.
+
+        """
         data = self.__DATAFRAME_EVENT_DATA__
         data = data[(data["predicted_severity"] > 0) | (data["region_severity"] > 0)]
         self.__ANALYSIS_RESULTS__["MAE; Total"] = np.mean(
@@ -947,6 +1085,11 @@ class EventDataAnalysis:
             )
 
     def __over_under_estimates__(self):
+        """
+        Computes the proportion of underestimates and overestimates for each parameter and for the total.
+
+        The proportions are computed for all parameters and for each parameter separately.
+        """
         data = self.__DATAFRAME_EVENT_DATA__
         data["understimates"] = data["predicted_severity"] < data["region_severity"]
         data["overstimates"] = data["predicted_severity"] > data["region_severity"]
@@ -992,6 +1135,13 @@ class EventDataAnalysis:
             )
 
     def __cohen_kappa_score__(self):
+        """
+        Computes the Cohen Kappa score for the event data.
+
+        The Cohen Kappa score is a measure of the agreement between the predicted
+        and observed severity of the event. The score is computed for all parameters
+        and for each parameter separately.
+        """
         data = self.__DATAFRAME_EVENT_DATA__
         self.__ANALYSIS_RESULTS__[f"Índice de Kappa de Cohen; Todas"] = (
             cohen_kappa_score(data["region_severity"], data["predicted_severity"])
@@ -1013,10 +1163,31 @@ class EventDataAnalysis:
             )
 
     def get_error_map(self):
+        """
+        Generates error maps for the event data.
+
+        This method generates two types of error maps:
+        1. Station Error Map: Shows the mean error between predicted and observed severity
+        for each station, geolocated by latitude and longitude.
+        2. Region Error Map: Displays the mean error between predicted and region severity
+        for each region, visualized on a map with regional polygons.
+
+        The error maps help visualize the distribution and magnitude of prediction errors
+        across different stations and regions.
+        """
         self.__station_error_map__()
         self.__region_error_map__()
 
     def __station_error_map__(self):
+        """
+        Generates a map of error distribution for stations.
+
+        This method generates a map of mean errors between predicted and observed
+        severity for each station, geolocated by latitude and longitude.
+
+        The map displays the error distribution across different stations, helping
+        visualize the magnitude of prediction errors at each station.
+        """
         data = self.__DATAFRAME_EVENT_DATA__.copy()
         data = data[(data["predicted_severity"] > 0) | (data["region_severity"] > 0)]
         data = data[
@@ -1052,7 +1223,7 @@ class EventDataAnalysis:
             size="large",
             weight="heavy",
             ha="center",
-        )        
+        )
         shape.plot(ax=ax, color="lightgrey", aspect=1, edgecolor="darkgrey")
         ax.set_xlim(
             data_grouped["longitude"].min() - 3, data_grouped["longitude"].max() + 3
@@ -1080,7 +1251,7 @@ class EventDataAnalysis:
         plt.yticks(fontsize="x-small", ha="right", weight="light")
         plt.xticks(fontsize="x-small", weight="light")
         plt.subplots_adjust()
-        plt.tight_layout()         
+        plt.tight_layout()
 
         path = event_data_commons.get_path_to_file(
             f"error-map", event=self.__EVENT_ID__
@@ -1094,6 +1265,16 @@ class EventDataAnalysis:
         plt.clf()
 
     def __region_error_map__(self):
+        """
+        Plots a map of the error distribution by region.
+
+        The method first computes the mean error between the predicted and observed
+        severity for each region. The result is then plotted as a choropleth map
+        using the region polygons as the geometry. The map is saved as a PNG image
+        in the "analysis" directory with the name "error-map-002_Regiones.png"
+
+        :return: None
+        """
         data = self.__DATAFRAME_EVENT_DATA__.copy()
         data = data[(data["predicted_severity"] > 0) | (data["region_severity"] > 0)]
         data = data[
@@ -1131,7 +1312,7 @@ class EventDataAnalysis:
             size="large",
             weight="heavy",
             ha="center",
-        )           
+        )
         shape.plot(ax=ax, color="lightgrey", aspect=1, edgecolor="darkgrey")
         ax.set_xlim(data["longitude"].min() - 3, data["longitude"].max() + 3)
         ax.set_ylim(data["latitude"].min() - 3, data["latitude"].max() + 3)
@@ -1155,8 +1336,8 @@ class EventDataAnalysis:
         plt.yticks(fontsize="x-small", ha="right", weight="light")
         plt.xticks(fontsize="x-small", weight="light")
         plt.subplots_adjust()
-        plt.tight_layout()    
-  
+        plt.tight_layout()
+
         path = event_data_commons.get_path_to_file(
             f"error-map", event=self.__EVENT_ID__
         )
@@ -1169,6 +1350,17 @@ class EventDataAnalysis:
         plt.clf()
 
     def save_analisys_data(self):
+        """
+        Saves the analysis results to a file.
+
+        The results are saved to the "event_analysis" file in the "analysis" directory.
+        The file contains the analysis results, with each result in a separate line.
+        The format for each line is "key value1 value2 ...", where "key" is the name
+        of the analysis result, and "value1", "value2", etc. are the values of the
+        result. If the result is a list, the values are separated by spaces.
+
+        """
+        #
         path = event_data_commons.get_path_to_file(
             "event_analysis", event=self.__EVENT_ID__
         )

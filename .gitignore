@@ -9,7 +9,9 @@ __pycache__/
 # Ignore
 TFM/
 __dep/
-data/
+data/analisis
+data/avisos_emitidos
+data/datos_observados
 results/
 
 # Ignore virtual environment directories
