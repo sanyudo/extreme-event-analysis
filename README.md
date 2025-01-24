@@ -1,3 +1,7 @@
 This master’s thesis investigates the discrepancies between meteorological forecasts issued by official agencies and the observed data during predicted extreme weather events. Despite advancements in technology and meteorological models, significant discrepancies persist between predictions and observed data, particularly in extreme events. The primary objective of this study is to compare meteorological forecast data with observations from automatic weather stations, identifying trends and deviations. The methodology involves the collection and analysis of historical data from weather stations operated by the Spanish State Meteorological Agency, distributed across the entire Spanish territory. Similarly, data corresponding to severe weather warnings for major extreme events since 2018 will be retrieved. Various statistical techniques will be applied to this dataset to assess the accuracy of the predictions compared to the actual situations observed.
+
+
 The results of this study will provide key insights into the possible causes of the discrepancies between forecasts and observed data, as well as recommendations to improve the accuracy of meteorological predictions when issuing weather warnings. This work contributes to the understanding and enhancement of early warning systems and the management of risks associated with extreme weather events.
+
+
 Keywords: meteorology, forecasting, comparative, extreme events.
